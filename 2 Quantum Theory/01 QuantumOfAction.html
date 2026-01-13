@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum of Action Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0d0d0d;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Main Container to hold side-by-side elements */
+        .main-layout {
+            display: flex;
+            flex-direction: row; /* Side by side */
+            align-items: center;
+            justify-content: center;
+            gap: 40px; /* Space between text and circle */
+            padding: 20px;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        /* The Visualizer Circle */
+        #canvas-container {
+            position: relative;
+            box-shadow: 0 0 60px rgba(0, 210, 255, 0.1);
+            border-radius: 50%;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #000000 70%);
+            /* Ensure it stays on top if there's any negative margin */
+            z-index: 2; 
+        }
+
+        canvas {
+            display: block;
+            border-radius: 50%;
+        }
+
+        /* The Sidebar / UI Layer */
+        #ui-layer {
+            position: relative; /* No longer absolute */
+            width: 300px;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin: 0 0 15px 0;
+            background: linear-gradient(90deg, #fff, #aaa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: #888;
+            margin-bottom: 25px;
+            line-height: 1.5;
+        }
+
+        .legend {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            backdrop-filter: blur(5px);
+        }
+
+        .key-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 0.95rem;
+        }
+        
+        .dot { 
+            width: 12px; 
+            height: 12px; 
+            border-radius: 50%; 
+            margin-right: 12px; 
+            flex-shrink: 0;
+        }
+        .blue { background: #00d2ff; box-shadow: 0 0 8px #00d2ff; }
+        .red { background: #ff4d4d; box-shadow: 0 0 8px #ff4d4d; }
+
+        .formula {
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #fff;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        /* Responsive Design: Stack vertically on small screens */
+        @media (max-width: 800px) {
+            .main-layout {
+                flex-direction: column-reverse;
+                gap: 20px;
+            }
+            #ui-layer {
+                width: 100%;
+                text-align: center;
+            }
+            .legend {
+                text-align: left;
+                display: inline-block;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-layout">
+        
+        <div id="ui-layer">
+            <h1>Quantum of Action</h1>
+            <p class="subtitle">
+                A visualization of the Bohr model showing how energy is quantized.
+            </p>
+            
+            <div class="legend">
+                <span class="formula">E = h&nu;</span>
+                <div style="margin-bottom:15px; font-size: 0.9em; color:#bbb;">
+                    Energy is emitted in discrete packets (photons) when the electron drops to a lower shell.
+                </div>
+                
+                <div class="key-item">
+                    <span class="dot blue"></span> 
+                    <div>
+                        <strong>High Energy</strong><br>
+                        <span style="font-size:0.8em; color:#888;">Big Jump = Blue Photon</span>
+                    </div>
+                </div>
+                
+                <div class="key-item">
+                    <span class="dot red"></span> 
+                    <div>
+                        <strong>Low Energy</strong><br>
+                        <span style="font-size:0.8em; color:#888;">Small Jump = Red Photon</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="canvas-container">
+            <canvas id="simCanvas"></canvas>
+        </div>
+
+    </div>
+
+<script>
+    /**
+     * CONFIGURATION
+     */
+    const CONFIG = {
+        orbitRadii: [60, 110, 160], 
+        colors: {
+            nucleus: '#ffffff',
+            electron: '#ffff00',
+            shell: 'rgba(255, 255, 255, 0.15)',
+            highE: '#00d2ff', 
+            lowE: '#ff4d4d'   
+        },
+        physics: {
+            electronSpeed: 0.04,
+            photonSpeed: 2.5,
+            jumpProbability: 0.015, 
+            resetProbability: 0.03  
+        }
+    };
+
+    /**
+     * SETUP CANVAS
+     */
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Size settings
+    const size = 500;
+    canvas.width = size;
+    canvas.height = size;
+    // Scale down slightly for smaller screens via CSS if needed, 
+    // but internal resolution remains high.
+
+    const centerX = size / 2;
+    const centerY = size / 2;
+
+    /**
+     * CLASSES
+     */
+    class Photon {
+        constructor(x, y, angle, type) {
+            this.x = x;
+            this.y = y;
+            this.angle = angle;
+            this.type = type; 
+            this.age = 0;
+            this.active = true;
+            
+            if (type === 'high') {
+                this.color = CONFIG.colors.highE;
+                this.frequency = 0.8; 
+                this.amplitude = 6;
+                this.speed = CONFIG.physics.photonSpeed;
+            } else {
+                this.color = CONFIG.colors.lowE;
+                this.frequency = 0.4; 
+                this.amplitude = 8;
+                this.speed = CONFIG.physics.photonSpeed;
+            }
+        }
+
+        update() {
+            this.x += Math.cos(this.angle) * this.speed;
+            this.y += Math.sin(this.angle) * this.speed;
+            this.age++;
+
+            const dist = Math.sqrt((this.x - centerX)**2 + (this.y - centerY)**2);
+            if (dist > size/2 + 20) {
+                this.active = false;
+            }
+        }
+
+        draw(ctx) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.angle);
+
+            ctx.beginPath();
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 2;
+            
+            const packetLength = 20; 
+            for (let i = -packetLength; i <= packetLength; i++) {
+                const envelope = Math.exp(-Math.pow(i/10, 2)); 
+                const yVal = Math.sin(i * this.frequency - (this.age * 0.2)) * this.amplitude * envelope;
+                
+                if (i === -packetLength) ctx.moveTo(i, yVal);
+                else ctx.lineTo(i, yVal);
+            }
+            
+            ctx.stroke();
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = this.color;
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    class Electron {
+        constructor() {
+            this.shellIndex = 2; 
+            this.angle = 0;
+            this.visualRadius = CONFIG.orbitRadii[this.shellIndex];
+        }
+
+        update() {
+            this.angle += CONFIG.physics.electronSpeed;
+            const targetRadius = CONFIG.orbitRadii[this.shellIndex];
+            this.visualRadius += (targetRadius - this.visualRadius) * 0.2;
+
+            const r = Math.random();
+
+            if (this.shellIndex > 0 && r < CONFIG.physics.jumpProbability) {
+                const oldIndex = this.shellIndex;
+                const jumpTo = Math.floor(Math.random() * this.shellIndex); 
+                this.shellIndex = jumpTo;
+                
+                const jumpSize = oldIndex - this.shellIndex;
+                const type = (jumpSize > 1) ? 'high' : 'low'; 
+                this.emitPhoton(type);
+            } 
+            else if (this.shellIndex < 2 && r > (1 - CONFIG.physics.resetProbability)) {
+                this.shellIndex++;
+            }
+        }
+
+        emitPhoton(type) {
+            const x = centerX + Math.cos(this.angle) * this.visualRadius;
+            const y = centerY + Math.sin(this.angle) * this.visualRadius;
+            const emitAngle = this.angle + (Math.random() - 0.5); 
+            photons.push(new Photon(x, y, emitAngle, type));
+        }
+
+        draw(ctx) {
+            const x = centerX + Math.cos(this.angle) * this.visualRadius;
+            const y = centerY + Math.sin(this.angle) * this.visualRadius;
+
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.fillStyle = CONFIG.colors.electron;
+            ctx.fill();
+            
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = CONFIG.colors.electron;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    const electron = new Electron();
+    let photons = [];
+
+    function draw() {
+        ctx.fillStyle = 'rgba(13, 13, 13, 1)'; 
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Nucleus
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 8, 0, Math.PI * 2);
+        ctx.fillStyle = CONFIG.colors.nucleus;
+        ctx.fill();
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = 'white';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Shells
+        ctx.lineWidth = 1;
+        CONFIG.orbitRadii.forEach(r => {
+            ctx.beginPath();
+            ctx.strokeStyle = CONFIG.colors.shell;
+            ctx.setLineDash([5, 5]);
+            ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        });
+
+        // Photons
+        for (let i = photons.length - 1; i >= 0; i--) {
+            let p = photons[i];
+            p.update();
+            p.draw(ctx);
+            if (!p.active) {
+                photons.splice(i, 1);
+            }
+        }
+
+        // Electron
+        electron.update();
+        electron.draw(ctx);
+
+        requestAnimationFrame(draw);
+    }
+
+    draw();
+
+</script>
+</body>
+</html>

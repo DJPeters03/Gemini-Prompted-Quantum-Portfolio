@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step 2: The "Box" of Modes</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --text-color: #c9d1d9;
+            --panel-bg: #161b22;
+            --accent-blue: #58a6ff;
+            --accent-red: #ff7b72;
+            --border-color: #30363d;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background-color: var(--panel-bg);
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        h1 { color: var(--accent-blue); margin-bottom: 10px; }
+        h2 { color: var(--text-color); margin-top: 0; }
+        .subtitle { color: #8b949e; font-style: italic; margin-bottom: 25px; display: block;}
+
+        .explanation-box {
+            background: rgba(88, 166, 255, 0.1);
+            border-left: 4px solid var(--accent-blue);
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: 300px;
+            background: #0a0c10;
+            border-radius: 8px;
+            border: 2px solid #333;
+            overflow: hidden;
+            margin-bottom: 20px;
+            /* Create the appearance of a physical box having walls */
+            box-shadow: inset 15px 0 20px -10px #000, inset -15px 0 20px -10px #000;
+        }
+
+        /* The 'walls' of the box */
+        .wall-left, .wall-right {
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 4px;
+            background: #555;
+            z-index: 2;
+        }
+        .wall-left { left: 0; }
+        .wall-right { right: 0; }
+
+        canvas {
+            position: absolute;
+            top: 0; left: 0;
+            z-index: 1;
+        }
+
+        .controls {
+            background: #21262d;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        input[type=range] {
+            width: 100%;
+            margin: 15px 0;
+            cursor: pointer;
+        }
+
+        .stats-panel {
+            display: flex;
+            justify-content: space-between;
+            font-family: monospace;
+            font-size: 1.1em;
+        }
+
+        .mode-counter {
+            color: var(--accent-blue);
+            font-weight: bold;
+        }
+        
+        .frequency-label {
+            font-weight: bold;
+            transition: color 0.3s ease;
+        }
+
+        .footer-link {
+            margin-top: 30px;
+            text-align: center;
+            color: #8b949e;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Step 2: The Problem with the Box</h1>
+    <span class="subtitle">Why the classical prediction went to infinity.</span>
+
+    <div class="explanation-box">
+        <strong>The Missing Link:</strong> Before Planck could fix the problem, we must understand <em>why</em> the UV catastrophe happened.
+        <p>Imagine the black body furnace as a simple 1D box. Light inside can only exist as <strong>standing waves</strong> (modes) that fit perfectly between the walls. Classical physics assumed every possible wave mode gets an equal share of heat energy.</p>
+    </div>
+
+    <div class="canvas-container" id="canvasContainer">
+        <div class="wall-left"></div>
+        <canvas id="waveCanvas"></canvas>
+        <div class="wall-right"></div>
+    </div>
+
+    <div class="controls">
+        <div class="stats-panel">
+            <span>Current Mode (n): <span id="modeValue" class="mode-counter">1</span></span>
+            <span id="freqLabel" class="frequency-label" style="color: var(--accent-red)">Low Frequency (Red)</span>
+        </div>
+
+        <input type="range" id="modeSlider" min="1" max="50" value="1" step="1">
+
+        <p style="font-size: 0.9em; color: #8b949e;">
+            <strong>Interaction:</strong> Slide to increase frequency. Notice how crowded the waves become.
+            <br><br>
+            <strong>The Catastrophe:</strong> In classical physics, <em>n=1</em> gets $k T$ energy. <em>n=2</em> gets $k T$ energy. <em>n=50</em> gets $k T$ energy. Since <em>n</em> goes to infinity (UV), total energy goes to infinity.
+        </p>
+    </div>
+</div>
+<div class="footer-link">
+    Next Step: Introduce Planck's Resonators to limit energy flow into high 'n' modes.
+</div>
+
+<script>
+    const canvas = document.getElementById('waveCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('canvasContainer');
+    const slider = document.getElementById('modeSlider');
+    const modeValueDisplay = document.getElementById('modeValue');
+    const freqLabel = document.getElementById('freqLabel');
+
+    let width, height;
+    let time = 0;
+    // n = The mode number (how many half-wavelengths fit in the box)
+    let n = 1; 
+
+    function resize() {
+        width = container.clientWidth;
+        height = container.clientHeight;
+        canvas.width = width;
+        canvas.height = height;
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Physics & Drawing ---
+
+    function getWaveColor(modeNum) {
+        // Map mode n (1 to 50) to a color spectrum (Red to Violet)
+        const normalized = (modeNum - 1) / 49; // 0.0 to 1.0
+        // Simple hue rotation from Red (0deg) to Blue/Violet (260deg)
+        const hue = normalized * 260; 
+        return `hsl(${hue}, 80%, 60%)`;
+    }
+
+    function updateLabels(modeNum) {
+        modeValueDisplay.innerText = modeNum;
+        const color = getWaveColor(modeNum);
+        freqLabel.style.color = color;
+        
+        if(modeNum < 5) freqLabel.innerText = "Low Frequency (Infrared/Red)";
+        else if(modeNum < 20) freqLabel.innerText = "Medium Frequency (Visible Light)";
+        else freqLabel.innerText = "High Frequency (UV / X-Ray)";
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, width, height);
+        
+        const centerY = height / 2;
+        const amplitude = height * 0.35; // Max height of wave
+        const boxLength = width; // The "L" in physics formulas
+
+        const currentColor = getWaveColor(n);
+
+        // 1. Draw center line
+        ctx.beginPath();
+        ctx.strokeStyle = '#30363d';
+        ctx.setLineDash([5, 5]);
+        ctx.moveTo(0, centerY);
+        ctx.lineTo(width, centerY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 2. Draw Standing Wave
+        // Formula: y(x,t) = A * sin(n * pi * x / L) * cos(omega * t)
+        ctx.beginPath();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = currentColor;
+        ctx.shadowColor = currentColor;
+        ctx.shadowBlur = 15;
+
+        // Oscillation speed increases slightly with frequency for visual effect
+        const speed = 0.02 + (n * 0.001); 
+        const oscillationFactor = Math.cos(time * speed);
+
+        for (let x = 0; x <= width; x++) {
+            // Normalized position (0.0 to 1.0) along the box length
+            const xNorm = x / boxLength;
+            
+            // The spatial part of the standing wave equation
+            const spatialY = Math.sin(n * Math.PI * xNorm);
+            
+            // Combine spatial position with time oscillation and screen amplitude
+            const y = centerY - (spatialY * oscillationFactor * amplitude);
+
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0; // Reset shadow for next frame
+
+        // Increment time
+        time++;
+        requestAnimationFrame(draw);
+    }
+
+    // --- Controls ---
+    slider.addEventListener('input', (e) => {
+        n = parseInt(e.target.value);
+        updateLabels(n);
+        // Reset time slightly to ensure smooth transition if changing rapidly
+        time = 0; 
+    });
+
+    // Initialize
+    updateLabels(n);
+    draw();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Qubit Pulse Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050510;
+            color: #00ffcc;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            width: 100%;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(90deg, #111, #222);
+            border-bottom: 1px solid #00ffcc;
+            box-shadow: 0 0 10px rgba(0, 255, 204, 0.2);
+            z-index: 10;
+            box-sizing: border-box;
+        }
+
+        .stats {
+            display: flex;
+            gap: 20px;
+            font-size: 1.2rem;
+        }
+
+        .stat-box {
+            background: rgba(0, 255, 204, 0.1);
+            padding: 5px 15px;
+            border-radius: 4px;
+            border: 1px solid #00ffcc;
+        }
+
+        canvas {
+            display: block;
+            background: radial-gradient(circle at center, #0a0a20 0%, #000000 100%);
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: 1px solid #333;
+        }
+
+        button {
+            background: transparent;
+            color: #00ffcc;
+            border: 1px solid #00ffcc;
+            padding: 8px 15px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #00ffcc;
+            color: #000;
+            box-shadow: 0 0 15px #00ffcc;
+        }
+
+        /* Slider Styling */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 150px;
+            height: 5px;
+            background: #333;
+            outline: none;
+            border-radius: 5px;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 15px;
+            height: 15px;
+            background: #00ffcc;
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #00ffcc;
+        }
+
+        input[type=range]::-moz-range-thumb {
+            width: 15px;
+            height: 15px;
+            background: #00ffcc;
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #00ffcc;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div><strong>QUANTUM VISUALIZER</strong> // Double Slit Experiment</div>
+        <div class="stats">
+            <div class="stat-box">|0&rangle; count: <span id="count0">0</span></div>
+            <div class="stat-box">|1&rangle; count: <span id="count1">0</span></div>
+        </div>
+    </header>
+
+    <canvas id="quantumCanvas"></canvas>
+
+    <div class="controls">
+        <div class="slider-container">
+            <label for="speedSlider">Particle Speed:</label>
+            <input type="range" id="speedSlider" min="0" max="5" step="0.1" value="1">
+            <span id="speedValue">1.0x</span>
+        </div>
+        <button onclick="resetSimulation()">Reset Experiment</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('quantumCanvas');
+        const ctx = canvas.getContext('2d');
+        const count0El = document.getElementById('count0');
+        const count1El = document.getElementById('count1');
+        
+        // Speed Control Inputs
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValueDisplay = document.getElementById('speedValue');
+        let simulationSpeed = 1.0;
+
+        // Update speed variable when slider changes
+        speedSlider.addEventListener('input', (e) => {
+            simulationSpeed = parseFloat(e.target.value);
+            speedValueDisplay.innerText = simulationSpeed.toFixed(1) + "x";
+        });
+
+        // Simulation State
+        let particles = [];
+        let detections = []; 
+        let count0 = 0;
+        let count1 = 0;
+        let animationId;
+
+        // Configuration
+        let width, height;
+        let barrierX;
+        let screenX;
+        let slitHeight = 60;
+        let slit0Y, slit1Y;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight - 60; // Subtract header
+            canvas.width = width;
+            canvas.height = height;
+            
+            barrierX = width * 0.3;
+            screenX = width * 0.9;
+            slit0Y = height * 0.35;
+            slit1Y = height * 0.65;
+        }
+
+        class Particle {
+            constructor() {
+                this.x = 0;
+                this.y = height / 2 + (Math.random() - 0.5) * height * 0.8; 
+                this.vx = 4 + Math.random() * 2; 
+                this.vy = (Math.random() - 0.5) * 2; 
+                this.frequency = 0.1 + Math.random() * 0.1;
+                this.phase = Math.random() * Math.PI * 2;
+                this.life = 0;
+                this.passedSlit = false;
+                this.gate = null; 
+                this.color = `hsl(${160 + Math.random()*40}, 100%, 50%)`;
+                
+                // Target the slits initially
+                if (Math.random() > 0.5) {
+                    let angle = Math.atan2(slit0Y - this.y, barrierX - this.x);
+                    this.vy += Math.sin(angle) * 1.5; 
+                } else {
+                    let angle = Math.atan2(slit1Y - this.y, barrierX - this.x);
+                    this.vy += Math.sin(angle) * 1.5;
+                }
+            }
+
+            update() {
+                // Determine step size based on slider speed
+                // If speed is 0, particles pause
+                
+                this.life += 1 * simulationSpeed; // Cycle the wave faster/slower
+                
+                let dx = this.vx * simulationSpeed;
+                let dy = this.vy * simulationSpeed;
+
+                this.x += dx;
+                
+                // Calculate Wave Offset
+                let waveY = Math.sin(this.life * this.frequency + this.phase) * 5;
+                
+                // Check Collision with Barrier
+                if (!this.passedSlit && this.x >= barrierX - 10 && this.x <= barrierX + 10) {
+                    
+                    // Check if within Slit 0
+                    if (Math.abs((this.y + waveY) - slit0Y) < slitHeight / 2) {
+                        this.passedSlit = true;
+                        this.gate = 0;
+                        count0++;
+                        count0El.innerText = count0;
+                        this.vy = (Math.random() - 0.5) * 4; 
+                    } 
+                    // Check if within Slit 1
+                    else if (Math.abs((this.y + waveY) - slit1Y) < slitHeight / 2) {
+                        this.passedSlit = true;
+                        this.gate = 1;
+                        count1++;
+                        count1El.innerText = count1;
+                        this.vy = (Math.random() - 0.5) * 4;
+                    } 
+                    else {
+                        return false; // Hit the wall
+                    }
+                }
+
+                this.y += dy;
+
+                // Check Collapse Zone (Screen)
+                if (this.x >= screenX) {
+                    detections.push({ x: screenX, y: this.y + waveY, color: this.color });
+                    if(detections.length > 200) detections.shift(); 
+                    return false; 
+                }
+
+                return true; 
+            }
+
+            draw() {
+                let waveY = Math.sin(this.life * this.frequency + this.phase) * 5;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y + waveY, 3, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // Trail
+                ctx.beginPath();
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 1;
+                // Trail length scales slightly with speed to look natural
+                let trailLen = 10 * Math.max(1, simulationSpeed); 
+                ctx.moveTo(this.x - trailLen, this.y + waveY);
+                ctx.lineTo(this.x, this.y + waveY);
+                ctx.stroke();
+
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+            }
+        }
+
+        function drawEnvironment() {
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#111';
+            
+            // Draw Barrier Wall
+            ctx.fillRect(barrierX - 5, 0, 10, height);
+            
+            // Clear Slits
+            ctx.fillStyle = '#0a0a20'; 
+            ctx.fillRect(barrierX - 6, slit0Y - slitHeight/2, 12, slitHeight);
+            ctx.fillRect(barrierX - 6, slit1Y - slitHeight/2, 12, slitHeight);
+
+            // Slit Borders
+            ctx.strokeStyle = '#00ffcc';
+            ctx.lineWidth = 2;
+            
+            ctx.strokeRect(barrierX - 5, slit0Y - slitHeight/2, 10, slitHeight);
+            ctx.fillStyle = "#fff";
+            ctx.font = "14px Arial";
+            ctx.fillText("|0⟩", barrierX - 25, slit0Y + 5);
+
+            ctx.strokeRect(barrierX - 5, slit1Y - slitHeight/2, 10, slitHeight);
+            ctx.fillText("|1⟩", barrierX - 25, slit1Y + 5);
+
+            // Draw Detection Screen
+            ctx.fillStyle = '#222';
+            ctx.fillRect(screenX, 0, 10, height);
+            ctx.strokeStyle = '#ff0055';
+            ctx.beginPath();
+            ctx.moveTo(screenX, 0);
+            ctx.lineTo(screenX, height);
+            ctx.stroke();
+
+            // Labels
+            ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+            ctx.font = "20px Courier New";
+            ctx.fillText("SUPERPOSITION ZONE", (barrierX + screenX)/2 - 100, 40);
+            ctx.fillText("COLLAPSE ZONE", screenX + 20, 40);
+        }
+
+        function drawDetections() {
+            ctx.shadowBlur = 5;
+            for (let d of detections) {
+                ctx.fillStyle = d.color;
+                ctx.beginPath();
+                ctx.arc(d.x + Math.random(), d.y, 2, 0, Math.PI*2);
+                ctx.fill();
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 10, 32, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            drawEnvironment();
+            drawDetections();
+
+            // Spawn rate linked to speed? 
+            // Let's keep spawn rate constant per frame, but only if speed > 0
+            if (simulationSpeed > 0 && Math.random() < 0.1) {
+                particles.push(new Particle());
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                let alive = p.update();
+                if (alive) {
+                    p.draw();
+                } else {
+                    particles.splice(i, 1);
+                }
+            }
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function resetSimulation() {
+            particles = [];
+            detections = [];
+            count0 = 0;
+            count1 = 0;
+            count0El.innerText = '0';
+            count1El.innerText = '0';
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+
+    </script>
+</body>
+</html>

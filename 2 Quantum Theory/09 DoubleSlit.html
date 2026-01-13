@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Quantum Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            color: white;
+        }
+        
+        /* Control Panel Styling */
+        .controls {
+            display: flex;
+            gap: 20px;
+            padding: 15px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+            width: 100%;
+            justify-content: center;
+            z-index: 10;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        label { font-size: 12px; color: #0ff; margin-bottom: 5px; }
+        input[type=range] { cursor: pointer; }
+        
+        /* Canvas Styling */
+        canvas {
+            background-color: #050505;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.05);
+            margin-top: 10px;
+            border: 1px solid #333;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="speedIn">Wave Speed</label>
+            <input type="range" id="speedIn" min="1" max="10" step="0.5" value="4">
+        </div>
+        <div class="control-group">
+            <label for="widthIn">Slit Hole Size</label>
+            <input type="range" id="widthIn" min="10" max="80" value="40">
+        </div>
+        <div class="control-group" style="justify-content:center; color:#888; font-size:12px; max-width: 200px; text-align:center;">
+            Source &rarr; 1 Slit &rarr; 2 Slits &rarr; 2 Slits &rarr; Detector
+        </div>
+    </div>
+
+    <canvas id="simCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // UI Elements
+    const speedInput = document.getElementById('speedIn');
+    const widthInput = document.getElementById('widthIn');
+
+    canvas.width = 1100;
+    canvas.height = 600;
+    const centerY = canvas.height / 2;
+
+    // Configuration Object
+    const CONFIG = {
+        count: 5000,
+        speed: parseFloat(speedInput.value),
+        slitWidth: parseInt(widthInput.value),
+        recycleDelay: 40, 
+        
+        // Wall positions
+        w1: 250,
+        w2: 500,
+        w3: 750,
+        w4: 1050
+    };
+
+    // Update config when sliders move
+    speedInput.addEventListener('input', (e) => {
+        CONFIG.speed = parseFloat(e.target.value);
+    });
+    widthInput.addEventListener('input', (e) => {
+        CONFIG.slitWidth = parseInt(e.target.value);
+    });
+
+    class Particle {
+        constructor() {
+            this.reset(true);
+        }
+
+        reset(randomStart = false) {
+            this.x = randomStart ? Math.random() * -CONFIG.w1 : 0; 
+            this.y = centerY + (Math.random() - 0.5) * 20;
+
+            // Initialize with a direction
+            // Note: We don't set exact speed here, we normalize it in update()
+            // to ensure slider changes affect everything immediately.
+            const angle = (Math.random() - 0.5) * 0.1; 
+            this.vx = Math.cos(angle);
+            this.vy = Math.sin(angle);
+            
+            this.active = true;
+            this.stuckTimer = 0;
+            this.color = 'cyan'; 
+            this.alpha = 1;
+        }
+
+        update() {
+            // Logic for stuck particles
+            if (!this.active) {
+                this.stuckTimer++;
+                this.alpha = 1 - (this.stuckTimer / CONFIG.recycleDelay);
+                if (this.stuckTimer > CONFIG.recycleDelay) this.reset();
+                return;
+            }
+
+            // Enforce current Global Speed
+            // We normalize the velocity vector and multiply by CONFIG.speed
+            const currentMag = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+            if (currentMag > 0) {
+                this.vx = (this.vx / currentMag) * CONFIG.speed;
+                this.vy = (this.vy / currentMag) * CONFIG.speed;
+            }
+
+            let nextX = this.x + this.vx;
+            let nextY = this.y + this.vy;
+            const sWidth = CONFIG.slitWidth; // Use current slider value
+
+            // --- COLLISION LOGIC ---
+
+            // 1. Barrier 1 (Single Center Slit)
+            if (this.x < CONFIG.w1 && nextX >= CONFIG.w1) {
+                if (Math.abs(nextY - centerY) < sWidth / 2) {
+                    this.diffract(1.2); 
+                } else {
+                    this.stick(CONFIG.w1);
+                    return;
+                }
+            }
+
+            // 2. Barrier 2 (Double Slit)
+            else if (this.x < CONFIG.w2 && nextX >= CONFIG.w2) {
+                const offset = 70; 
+                const inTop = Math.abs(nextY - (centerY - offset)) < sWidth / 2;
+                const inBot = Math.abs(nextY - (centerY + offset)) < sWidth / 2;
+
+                if (inTop || inBot) {
+                    this.diffract(2.0); 
+                } else {
+                    this.stick(CONFIG.w2);
+                    return;
+                }
+            }
+
+            // 3. Barrier 3 (Wide Double Slit)
+            else if (this.x < CONFIG.w3 && nextX >= CONFIG.w3) {
+                const offset = 140; 
+                const inTop = Math.abs(nextY - (centerY - offset)) < sWidth / 2;
+                const inBot = Math.abs(nextY - (centerY + offset)) < sWidth / 2;
+
+                if (inTop || inBot) {
+                    this.diffract(2.5); 
+                } else {
+                    this.stick(CONFIG.w3);
+                    return;
+                }
+            }
+
+            // 4. Back Screen
+            else if (nextX >= CONFIG.w4) {
+                this.stick(CONFIG.w4);
+                return;
+            }
+
+            this.x = nextX;
+            this.y = nextY;
+            
+            if (this.y < 0 || this.y > canvas.height) this.reset();
+        }
+
+        stick(xPos) {
+            this.x = xPos;
+            this.active = false;
+            this.color = '#ff0055';
+        }
+
+        diffract(intensity) {
+            // Add noise to vertical direction
+            this.vy += (Math.random() - 0.5) * intensity;
+            // Push forward to prevent getting stuck in the wall logic
+            this.x += this.vx; 
+        }
+
+        draw() {
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            const size = this.active ? 1.5 : 2.5;
+            ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+    }
+
+    // --- Init ---
+    const particles = [];
+    for (let i = 0; i < CONFIG.count; i++) {
+        particles.push(new Particle());
+    }
+
+    function drawBarriers() {
+        ctx.fillStyle = '#eee';
+        const sWidth = CONFIG.slitWidth;
+        const drawRect = (x, y, h) => {
+            if (h > 0) ctx.fillRect(x, y, 4, h);
+        };
+
+        // Wall 1: Single Center Gap
+        drawRect(CONFIG.w1, 0, centerY - sWidth/2);
+        drawRect(CONFIG.w1, centerY + sWidth/2, centerY); // extend to bottom
+
+        // Wall 2: Two Gaps (offset 70)
+        const off2 = 70;
+        // Top solid
+        drawRect(CONFIG.w2, 0, centerY - off2 - sWidth/2);
+        // Middle solid
+        drawRect(CONFIG.w2, centerY - off2 + sWidth/2, (off2*2) - sWidth);
+        // Bottom solid
+        drawRect(CONFIG.w2, centerY + off2 + sWidth/2, centerY); 
+
+        // Wall 3: Two Gaps (offset 140)
+        const off3 = 140;
+        // Top solid
+        drawRect(CONFIG.w3, 0, centerY - off3 - sWidth/2);
+        // Middle solid
+        drawRect(CONFIG.w3, centerY - off3 + sWidth/2, (off3*2) - sWidth);
+        // Bottom solid
+        drawRect(CONFIG.w3, centerY + off3 + sWidth/2, centerY);
+
+        // Back Screen
+        drawRect(CONFIG.w4, 0, canvas.height);
+    }
+
+    function animate() {
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        drawBarriers();
+
+        for (let p of particles) {
+            p.update();
+            p.draw();
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    animate();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>05 Uncertainty Principle</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        #sidebar {
+            width: 340px;
+            background: #111;
+            border-right: 1px solid #333;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        h1 { margin: 0 0 5px 0; font-size: 1.6rem; color: #fff; }
+        h2 { margin: 0 0 30px 0; font-size: 0.9rem; color: #666; font-weight: normal; }
+
+        .control-group { margin-bottom: 30px; }
+        label { display: block; color: #aaa; margin-bottom: 10px; font-size: 0.9rem; font-weight: bold; }
+        
+        /* The Trade-off Slider */
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+            margin-bottom: 5px;
+        }
+        
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .math-box {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            color: #00d2ff;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .status-panel {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+        }
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        .val-high { color: #ff4444; font-weight: bold; }
+        .val-low { color: #00ff88; font-weight: bold; }
+
+        /* Canvas */
+        #canvas-wrapper {
+            flex-grow: 1;
+            position: relative;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        canvas { display: block; width: 100%; height: 100%; }
+
+        .graph-label {
+            position: absolute;
+            font-weight: bold;
+            font-family: monospace;
+            padding: 5px 10px;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.7);
+        }
+        #label-pos { top: 20px; left: 20px; color: #00d2ff; border: 1px solid #00d2ff; }
+        #label-mom { bottom: 20px; left: 20px; color: #ffaa00; border: 1px solid #ffaa00; }
+
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h1>Quantum Theory</h1>
+        <h2>05. Uncertainty</h2>
+
+        <div class="math-box">
+            &Delta;x &middot; &Delta;p &ge; <sup>h</sup>&frasl;<sub>4&pi;</sub>
+        </div>
+
+        <div class="control-group" style="margin-top: 30px;">
+            <label>MEASUREMENT FOCUS</label>
+            <input type="range" id="tradeoffSlider" min="1" max="100" value="50">
+            <div class="slider-labels">
+                <span>Know Position<br>(Small &Delta;x)</span>
+                <span>Know Momentum<br>(Small &Delta;p)</span>
+            </div>
+        </div>
+
+        <div class="status-panel">
+            <div class="status-row">
+                <span style="color:#00d2ff">Uncertainty in X:</span>
+                <span id="unc-x">Balanced</span>
+            </div>
+            <div class="status-row">
+                <span style="color:#ffaa00">Uncertainty in P:</span>
+                <span id="unc-p">Balanced</span>
+            </div>
+        </div>
+
+        <div style="margin-top:auto; font-size: 0.85rem; color: #888; line-height: 1.5;">
+            <strong>The Law of Nature:</strong><br>
+            You cannot know where a particle is AND how fast it is moving at the same time.
+            <br><br>
+            Squeezing the position wave (Blue) forces the momentum wave (Orange) to spread out.
+        </div>
+    </div>
+
+    <div id="canvas-wrapper">
+        <div class="graph-label" id="label-pos">POSITION SPACE (Where is it?)</div>
+        <div class="graph-label" id="label-mom">MOMENTUM SPACE (How fast?)</div>
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('canvas-wrapper');
+    const slider = document.getElementById('tradeoffSlider');
+    
+    // UI Readouts
+    const txtUncX = document.getElementById('unc-x');
+    const txtUncP = document.getElementById('unc-p');
+
+    // State
+    let width, height;
+    let t = 0;
+    
+    // Physics Logic
+    // "tradeoff" goes from 0 to 1
+    // 0 = Precise Position (High Momentum Uncertainty)
+    // 1 = Precise Momentum (High Position Uncertainty)
+    let tradeoff = 0.5;
+
+    function resize() {
+        width = wrapper.offsetWidth;
+        height = wrapper.offsetHeight;
+        canvas.width = width;
+        canvas.height = height;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    slider.addEventListener('input', (e) => {
+        // Map 1-100 to 0.0-1.0
+        tradeoff = parseInt(e.target.value) / 100;
+        updateText();
+    });
+
+    function updateText() {
+        if (tradeoff < 0.2) {
+            txtUncX.innerHTML = "VERY LOW"; txtUncX.className = "val-low";
+            txtUncP.innerHTML = "EXTREME"; txtUncP.className = "val-high";
+        } else if (tradeoff > 0.8) {
+            txtUncX.innerHTML = "EXTREME"; txtUncX.className = "val-high";
+            txtUncP.innerHTML = "VERY LOW"; txtUncP.className = "val-low";
+        } else {
+            txtUncX.innerHTML = "Medium"; txtUncX.className = "";
+            txtUncP.innerHTML = "Medium"; txtUncP.className = "";
+        }
+    }
+
+    // --- Gaussian Function ---
+    // A standard bell curve: e^( - (x-mu)^2 / (2*sigma^2) )
+    function gaussian(x, mu, sigma) {
+        const a = 1 / (sigma * Math.sqrt(2 * Math.PI)); // Height normalization
+        const b = (x - mu);
+        return Math.exp(-(b * b) / (2 * sigma * sigma));
+    }
+
+    function draw() {
+        // Clear
+        ctx.fillStyle = "#080808";
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw Divider
+        ctx.strokeStyle = "#333";
+        ctx.beginPath();
+        ctx.moveTo(0, height/2);
+        ctx.lineTo(width, height/2);
+        ctx.stroke();
+
+        // --- Calculate Uncertainties ---
+        // We use a constant K for the area conservation
+        const K = 3000; 
+        
+        // Map slider (0 to 1) to Sigma values
+        // Sigma X (Position Width)
+        // If slider is 0 (Left), SigmaX is small (10). If 1 (Right), SigmaX is huge (300).
+        // Using log scale for better feel
+        const sigmaX = 10 * Math.pow(20, tradeoff); 
+        
+        // Sigma P (Momentum Width)
+        // Inverse relationship: SigmaP = K / SigmaX
+        const sigmaP = K / sigmaX; 
+
+
+        // --- 1. Draw Position Graph (Top Half) ---
+        // Center X
+        const centerX = width / 2;
+        const centerY_Pos = height / 4;
+        
+        // Axis line
+        ctx.strokeStyle = "#222";
+        ctx.beginPath(); ctx.moveTo(0, centerY_Pos); ctx.lineTo(width, centerY_Pos); ctx.stroke();
+
+        ctx.beginPath();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#00d2ff"; // Blue
+        ctx.fillStyle = "rgba(0, 210, 255, 0.2)";
+
+        for (let x = 0; x < width; x+=2) {
+            // Draw Gaussian
+            // We scale height for visibility (multiply by sigmaX to keep height roughly constant visually, 
+            // though mathematically height drops as width grows. We want to see the shape.)
+            // Actually, let's normalize peak height to fit screen for better UX
+            const dist = x - centerX;
+            const yVal = Math.exp(-(dist*dist)/(2*sigmaX*sigmaX));
+            
+            // Add wiggles (Phase) to show it's a wave
+            // Wiggles define velocity. 
+            // If SigmaX is huge (tradeoff=1), position is unknown, so it looks like a pure sine wave.
+            const wave = Math.cos((x * 0.1) - t); 
+            
+            // The visual representation: Envelope * Wave
+            const plotY = centerY_Pos - (yVal * 100 * wave); 
+            // Also draw Envelope for clarity
+            // Let's just draw the Probability Density (Envelope Squared) or just Envelope
+            // For simplicity: Draw Envelope
+        }
+        
+        // Let's draw the ENVELOPE (Probability Density) in Fill
+        ctx.beginPath();
+        ctx.moveTo(0, centerY_Pos);
+        for (let x = 0; x < width; x+=2) {
+            const dist = x - centerX;
+            // Gaussian
+            const val = Math.exp(-(dist*dist)/(2*sigmaX*sigmaX));
+            const y = centerY_Pos - (val * 120);
+            ctx.lineTo(x, y);
+        }
+        ctx.lineTo(width, centerY_Pos);
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw the "Particle" representation inside the wave
+        // Just the sine wave clipped by the envelope
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+        ctx.lineWidth = 1;
+        for (let x = 0; x < width; x+=2) {
+            const dist = x - centerX;
+            const val = Math.exp(-(dist*dist)/(2*sigmaX*sigmaX));
+            if(val < 0.01) continue;
+            
+            // The internal wave moves
+            const wave = Math.cos((x * 0.15) - t);
+            const y = centerY_Pos - (val * 120 * wave);
+            if(x===0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+
+        // --- 2. Draw Momentum Graph (Bottom Half) ---
+        // Center P
+        const centerY_Mom = (height * 3) / 4;
+        
+        // Axis line
+        ctx.strokeStyle = "#222";
+        ctx.beginPath(); ctx.moveTo(0, centerY_Mom); ctx.lineTo(width, centerY_Mom); ctx.stroke();
+
+        ctx.beginPath();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#ffaa00"; // Orange
+        ctx.fillStyle = "rgba(255, 170, 0, 0.2)";
+
+        ctx.moveTo(0, centerY_Mom);
+        for (let x = 0; x < width; x+=2) {
+            const dist = x - centerX;
+            // Momentum Gaussian
+            const val = Math.exp(-(dist*dist)/(2*sigmaP*sigmaP));
+            const y = centerY_Mom - (val * 120);
+            ctx.lineTo(x, y);
+        }
+        ctx.lineTo(width, centerY_Mom);
+        ctx.fill();
+        ctx.stroke();
+
+        // Add visual markers for Delta X and Delta P
+        drawBracket(ctx, centerX, centerY_Pos + 20, sigmaX * 2, "#00d2ff", "&Delta;x");
+        drawBracket(ctx, centerX, centerY_Mom + 20, sigmaP * 2, "#ffaa00", "&Delta;p");
+
+        t += 0.2;
+        requestAnimationFrame(draw);
+    }
+
+    function drawBracket(ctx, cx, cy, width, color, text) {
+        if(width > canvas.width) width = canvas.width - 20; // Cap
+        const half = width / 2;
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.font = "14px monospace";
+        ctx.lineWidth = 1;
+        
+        ctx.beginPath();
+        // Bracket shape
+        ctx.moveTo(cx - half, cy - 5);
+        ctx.lineTo(cx - half, cy + 5);
+        ctx.lineTo(cx + half, cy + 5);
+        ctx.lineTo(cx + half, cy - 5);
+        ctx.stroke();
+
+        ctx.fillText(text, cx - 10, cy + 20);
+    }
+
+    // Init
+    updateText();
+    draw();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planck's Black Body & The UV Catastrophe</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --text-color: #e0e0e0;
+            --panel-bg: #16213e;
+            --accent: #4cc9f0;
+            --danger: #f72585;
+            --success: #4361ee;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        header {
+            text-align: center;
+            padding: 20px;
+            max-width: 800px;
+        }
+
+        h1 { margin: 0; color: var(--accent); }
+        p { color: #a0a0b0; }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            width: 95%;
+            max-width: 1200px;
+            padding-bottom: 40px;
+        }
+
+        /* The Furnace Visualization */
+        .furnace-panel {
+            flex: 1;
+            min-width: 300px;
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .furnace-box {
+            width: 200px;
+            height: 200px;
+            background-color: #333;
+            border: 4px solid #555;
+            border-radius: 8px;
+            position: relative;
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 0 20px #000;
+        }
+
+        /* The "Hole" in the black body */
+        .furnace-hole {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: black; /* Starts black */
+            box-shadow: 0 0 30px rgba(0,0,0,0);
+            transition: background-color 0.1s, box-shadow 0.1s;
+        }
+
+        /* The Graph Visualization */
+        .graph-panel {
+            flex: 2;
+            min-width: 400px;
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        canvas {
+            background-color: #0f172a;
+            border-radius: 8px;
+            width: 100%;
+            height: 400px;
+            cursor: crosshair;
+        }
+
+        /* Controls */
+        .controls {
+            width: 100%;
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .legend {
+            display: flex;
+            gap: 20px;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+        
+        .tooltip {
+            background: rgba(0,0,0,0.8);
+            padding: 5px 10px;
+            border-radius: 4px;
+            position: absolute;
+            display: none;
+            pointer-events: none;
+            font-size: 0.8em;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Black Body & The UV Catastrophe</h1>
+        <p>Visualize why Classical Physics broke down and how Quantum Mechanics fixed it.</p>
+    </header>
+
+    <div class="container">
+        <div class="furnace-panel">
+            <h3>The Furnace</h3>
+            <p style="font-size: 0.9em">A box with a small hole. As temperature rises, the color of the light coming out shifts.</p>
+            
+            <div class="furnace-box">
+                <div class="furnace-hole" id="hole"></div>
+            </div>
+
+            <div class="controls">
+                <div class="stats">
+                    <span id="tempDisplay">Temperature: 3000 K</span>
+                </div>
+                <input type="range" id="tempSlider" min="1000" max="10000" step="50" value="3000">
+                <p style="font-size: 0.8em; margin-top: 5px;">Drag slider to heat the furnace</p>
+            </div>
+        </div>
+
+        <div class="graph-panel">
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="dot" style="background: var(--danger)"></div>
+                    <span>Classical Theory (Rayleigh-Jeans)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="dot" style="background: var(--success)"></div>
+                    <span>Quantum Reality (Planck)</span>
+                </div>
+            </div>
+            
+            <canvas id="radiationCanvas" width="800" height="400"></canvas>
+            <div id="tooltip" class="tooltip"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- PHYSICS CONSTANTS ---
+        const h = 6.626e-34; // Planck's constant
+        const c = 3.0e8;     // Speed of light
+        const k = 1.38e-23;  // Boltzmann constant
+
+        // --- DOM ELEMENTS ---
+        const canvas = document.getElementById('radiationCanvas');
+        const ctx = canvas.getContext('2d');
+        const slider = document.getElementById('tempSlider');
+        const tempDisplay = document.getElementById('tempDisplay');
+        const hole = document.getElementById('hole');
+        const tooltip = document.getElementById('tooltip');
+
+        // --- STATE ---
+        let T = 3000; // Temperature in Kelvin
+        // Graph boundaries
+        const xMin = 0;
+        const xMax = 3000; // Nanometers (nm)
+        const yMaxFixed = 5e13; // Fixed scale to see growth clearly, adjusted dynamically below
+
+        // --- MATH FUNCTIONS ---
+
+        // 1. Rayleigh-Jeans Law (Classical - The Catastrophe)
+        // Formula: B = (2ckT) / lambda^4
+        // Note: This blows up as lambda gets small (Ultraviolet)
+        function rayleighJeans(wavelengthNm, Temp) {
+            const lam = wavelengthNm * 1e-9; // convert to meters
+            if(lam <= 0) return 0;
+            return (2 * c * k * Temp) / Math.pow(lam, 4);
+        }
+
+        // 2. Planck's Law (Quantum - The Solution)
+        // Formula: B = (2hc^2 / lambda^5) * (1 / (e^(hc/lkT) - 1))
+        function planck(wavelengthNm, Temp) {
+            const lam = wavelengthNm * 1e-9;
+            if(lam <= 0) return 0;
+            
+            const p1 = (2 * h * Math.pow(c, 2)) / Math.pow(lam, 5);
+            const p2 = 1 / (Math.exp((h * c) / (lam * k * Temp)) - 1);
+            
+            return p1 * p2;
+        }
+
+        // Convert Kelvin to RGB for the furnace visual
+        // Simplified approximation algorithm for black body color
+        function getKelvinColor(t) {
+            t = t / 100;
+            let r, g, b;
+
+            if (t <= 66) {
+                r = 255;
+                g = t;
+                g = 99.4708025861 * Math.log(g) - 161.1195681661;
+                if (t <= 19) b = 0;
+                else {
+                    b = t - 10;
+                    b = 138.5177312231 * Math.log(b) - 305.0447927307;
+                }
+            } else {
+                r = t - 60;
+                r = 329.698727446 * Math.pow(r, -0.1332047592);
+                g = t - 60;
+                g = 288.1221695283 * Math.pow(g, -0.0755148492);
+                b = 255;
+            }
+            
+            // Clamp values
+            return `rgb(${Math.max(0, Math.min(255, r))}, ${Math.max(0, Math.min(255, g))}, ${Math.max(0, Math.min(255, b))})`;
+        }
+
+        // --- DRAWING LOGIC ---
+
+        function draw() {
+            // Clear Canvas
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const width = canvas.width;
+            const height = canvas.height;
+            const padding = 50;
+
+            // Define Scale
+            // Dynamic Y scale based on Planck peak to keep curve visible
+            // Peak of Planck is approx at lambda_max = b/T (Wien's law)
+            // But for visualization, we scale so the curve fits nicely
+            const maxPlanck = planck(2.898e6 / T, T); 
+            // We allow the classical line to go off chart (that's the point!)
+            const yMax = maxPlanck * 1.2; 
+
+            // Helper to map values to canvas coordinates
+            const mapX = (nm) => padding + (nm / xMax) * (width - 2 * padding);
+            const mapY = (val) => height - padding - (val / yMax) * (height - 2 * padding);
+
+            // Draw Axes
+            ctx.strokeStyle = '#888';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(padding, padding);
+            ctx.lineTo(padding, height - padding); // Y axis
+            ctx.lineTo(width - padding, height - padding); // X axis
+            ctx.stroke();
+
+            // Labels
+            ctx.fillStyle = '#aaa';
+            ctx.font = '12px Arial';
+            ctx.fillText("0 nm", padding, height - padding + 20);
+            ctx.fillText("3000 nm", width - padding - 20, height - padding + 20);
+            ctx.save();
+            ctx.translate(15, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText("Intensity (Spectral Radiance)", 0, 0);
+            ctx.restore();
+            
+            // Draw Visible Spectrum Background (Rainbow strip)
+            // Visible is roughly 380nm to 750nm
+            const visStart = mapX(380);
+            const visEnd = mapX(750);
+            const grad = ctx.createLinearGradient(visStart, 0, visEnd, 0);
+            grad.addColorStop(0, "rgba(100,0,255,0.2)"); // violet
+            grad.addColorStop(0.2, "rgba(0,0,255,0.2)"); // blue
+            grad.addColorStop(0.4, "rgba(0,255,0,0.2)"); // green
+            grad.addColorStop(0.6, "rgba(255,255,0,0.2)"); // yellow
+            grad.addColorStop(0.8, "rgba(255,165,0,0.2)"); // orange
+            grad.addColorStop(1, "rgba(255,0,0,0.2)"); // red
+            
+            ctx.fillStyle = grad;
+            ctx.fillRect(visStart, padding, visEnd - visStart, height - 2*padding);
+            ctx.fillStyle = "#aaa";
+            ctx.fillText("Visible Light", visStart, padding - 10);
+            ctx.fillText("UV", padding + 10, padding - 10);
+            ctx.fillText("Infrared", visEnd + 10, padding - 10);
+
+
+            // --- DRAW RAYLEIGH-JEANS (Classical) ---
+            ctx.beginPath();
+            ctx.strokeStyle = '#f72585'; // Pink/Red
+            ctx.lineWidth = 3;
+            // Draw dashed line for classical
+            ctx.setLineDash([10, 5]); 
+            
+            for (let nm = 100; nm <= xMax; nm += 10) {
+                const yVal = rayleighJeans(nm, T);
+                const xCanvas = mapX(nm);
+                const yCanvas = mapY(yVal);
+                
+                // Clamp yCanvas so it doesn't draw wildly off screen
+                if (yCanvas < padding) {
+                    if (nm === 100) ctx.moveTo(xCanvas, padding);
+                    else ctx.lineTo(xCanvas, padding);
+                } else {
+                    if (nm === 100) ctx.moveTo(xCanvas, yCanvas);
+                    else ctx.lineTo(xCanvas, yCanvas);
+                }
+            }
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset dash
+
+            // --- DRAW PLANCK (Quantum) ---
+            ctx.beginPath();
+            ctx.strokeStyle = '#4361ee'; // Blue
+            ctx.lineWidth = 4;
+            
+            for (let nm = 1; nm <= xMax; nm += 5) {
+                const yVal = planck(nm, T);
+                const xCanvas = mapX(nm);
+                const yCanvas = mapY(yVal);
+                
+                if (nm === 1) ctx.moveTo(xCanvas, yCanvas);
+                else ctx.lineTo(xCanvas, yCanvas);
+            }
+            ctx.stroke();
+        }
+
+        // --- UPDATE LOOP ---
+        function update() {
+            // Update Text
+            tempDisplay.innerText = `Temperature: ${T} K`;
+            
+            // Update Furnace Color
+            const color = getKelvinColor(T);
+            hole.style.backgroundColor = color;
+            hole.style.boxShadow = `0 0 ${20 + (T/100)}px ${color}`;
+
+            // Draw Graph
+            draw();
+        }
+
+        // --- EVENTS ---
+        slider.addEventListener('input', (e) => {
+            T = parseInt(e.target.value);
+            update();
+        });
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            // Simple logic to keep canvas crisp (renders at computed size)
+            // In production, would handle pixel density
+            draw();
+        });
+
+        // Initialize
+        update();
+
+    </script>
+</body>
+</html>

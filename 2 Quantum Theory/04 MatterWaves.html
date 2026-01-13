@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>04 - Matter Waves (De Broglie)</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            width: 320px;
+            background: #111;
+            border-right: 1px solid #333;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        h1 { margin: 0 0 5px 0; font-size: 1.6rem; color: #fff; }
+        h2 { margin: 0 0 30px 0; font-size: 0.9rem; color: #666; font-weight: normal; }
+
+        .control-group { margin-bottom: 30px; }
+        label { display: flex; justify-content: space-between; color: #aaa; margin-bottom: 10px; font-size: 0.9rem; }
+        
+        input[type=range] { width: 100%; cursor: pointer; margin-bottom: 5px; }
+
+        .readout {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #00d2ff;
+        }
+        .readout div { margin-bottom: 5px; display: flex; justify-content: space-between; }
+        .readout .label { color: #666; }
+
+        #canvas-wrapper {
+            flex-grow: 1;
+            position: relative;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        canvas { display: block; box-shadow: 0 0 50px rgba(0, 210, 255, 0.1); }
+
+        .annotation {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            text-align: center;
+            color: #555;
+            pointer-events: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h1>Quantum Theory</h1>
+        <h2>04. Matter Waves (De Broglie)</h2>
+
+        <div class="control-group">
+            <label>
+                <span>SCALE (Mass)</span>
+                <span id="mass-label">Electron</span>
+            </label>
+            <input type="range" id="massSlider" min="1" max="100" value="10">
+            <div style="font-size:0.8em; display:flex; justify-content:space-between; color:#666; margin-top:5px;">
+                <span>Quantum<br>(Wave)</span>
+                <span style="text-align:right">Classic<br>(Particle)</span>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>
+                <span>PARTICLE SPEED</span>
+                <span id="speed-label">Low</span>
+            </label>
+            <input type="range" id="speedSlider" min="1" max="50" value="15">
+        </div>
+
+        <div class="readout">
+            <div><span class="label">Momentum (p):</span> <span id="val-p">0</span></div>
+            <div><span class="label">Wavelength (&lambda;):</span> <span id="val-lambda">0</span></div>
+        </div>
+
+        <div style="margin-top:auto; font-size: 0.85rem; color: #888; line-height: 1.4;">
+            <strong>De Broglie Hypothesis:</strong><br>
+            <span style="color:#fff; font-size:1.1em;">&lambda; = h / p</span>
+            <br><br>
+            Every moving particle is a wave. 
+            <br>
+            * <strong>Heavy/Fast things</strong> have tiny wavelengths (act like bullets).
+            <br>
+            * <strong>Light/Slow things</strong> have long wavelengths (act like clouds).
+        </div>
+    </div>
+
+    <div id="canvas-wrapper">
+        <canvas id="simCanvas"></canvas>
+        <div class="annotation">Visualizing a "Wave Packet" of Probability</div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('canvas-wrapper');
+    
+    // UI Elements
+    const massSlider = document.getElementById('massSlider');
+    const speedSlider = document.getElementById('speedSlider');
+    const massLabel = document.getElementById('mass-label');
+    const pVal = document.getElementById('val-p');
+    const lambdaVal = document.getElementById('val-lambda');
+
+    // State
+    let width, height;
+    let particleX = 0;
+    
+    // Physics Parameters
+    let mass = 10;     // 1 = Electron (Quantum), 100 = Baseball (Classic)
+    let velocity = 2;  // Speed of the packet
+    
+    // Visual Constants
+    const PLANCK_CONST = 1000; // Scaled for visual
+    
+    function resize() {
+        width = wrapper.offsetWidth;
+        height = wrapper.offsetHeight;
+        canvas.width = width;
+        canvas.height = height;
+        particleX = width / 2; // Start center
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Interaction ---
+    function updatePhysics() {
+        mass = parseInt(massSlider.value);
+        velocity = parseInt(speedSlider.value);
+
+        // Update Labels
+        if (mass < 20) massLabel.innerText = "Electron (Quantum)";
+        else if (mass < 60) massLabel.innerText = "Molecule (Mixed)";
+        else massLabel.innerText = "Dust/Ball (Classic)";
+
+        // Math: p = mv
+        const p = mass * velocity;
+        // Math: lambda = h / p
+        // We add a min clamp so lambda doesn't crash to 0 or infinity
+        let lambda = (p === 0) ? 999 : PLANCK_CONST / p;
+        
+        // Update Readout
+        pVal.innerText = p.toFixed(0);
+        
+        if (lambda < 2) lambdaVal.innerText = "~0 (Classic)";
+        else lambdaVal.innerText = lambda.toFixed(1) + " px";
+    }
+
+    massSlider.addEventListener('input', updatePhysics);
+    speedSlider.addEventListener('input', updatePhysics);
+
+    // --- Rendering ---
+    let time = 0;
+
+    function draw() {
+        // Clear with fade for trail effect? No, clean clear for wave clarity
+        ctx.fillStyle = '#050505';
+        ctx.fillRect(0, 0, width, height);
+        
+        // Draw Grid (to show motion relative to space)
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.lineWidth = 1;
+        const gridSize = 50;
+        const offset = (time * velocity * 0.5) % gridSize; // Parallax effect
+        
+        for(let x = -offset; x < width; x+=gridSize) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+        }
+
+        // --- Calculate Wave Packet Properties ---
+        
+        const p = mass * velocity;
+        const lambda = PLANCK_CONST / Math.max(p, 1); // Wavelength
+        const freq = (velocity * 0.2); // Oscillation speed in time
+        
+        // Width of the packet (uncertainty in position)
+        // Heisenberg: Small Mass -> High Uncertainty (Wide packet)
+        // High Mass -> Low Uncertainty (Narrow packet)
+        // We scale this inversely with mass for visual intuition
+        const packetWidth = 4000 / mass; 
+        
+        // Update Position (Wrap around screen)
+        particleX += velocity * 0.1; 
+        if(particleX > width + 200) particleX = -200;
+
+        // --- Draw The Wave Packet ---
+        ctx.beginPath();
+        ctx.strokeStyle = '#00d2ff';
+        
+        // Color shifts based on state
+        // Cyan = Quantum, Orange = Classic
+        const quantumness = Math.min(1, 40 / mass); // 1 = quantum, 0 = classic
+        const r = Math.floor(255 * (1-quantumness));
+        const g = Math.floor(210 * quantumness + 150 * (1-quantumness));
+        const b = Math.floor(255 * quantumness);
+        ctx.strokeStyle = `rgb(${r},${g},${b})`;
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+
+        // We draw the wave pixel by pixel across the packet width
+        // Packet function: Envelope * Carrier Wave
+        // Envelope = Gaussian: e^(-x^2)
+        // Carrier = Cos(kx - wt)
+        
+        const startX = particleX - packetWidth/2;
+        const endX = particleX + packetWidth/2;
+        
+        // Draw Carrier Wave (The Wiggles)
+        ctx.lineWidth = 2;
+        let first = true;
+        
+        for(let x = startX; x <= endX; x+=2) {
+            // Normalized position within packet (-3 to +3 sigma approx)
+            const dist = (x - particleX);
+            const sigma = packetWidth / 6; // Controls Gaussian decay
+            
+            // 1. Envelope (Gaussian)
+            const envelope = Math.exp(- (dist * dist) / (2 * sigma * sigma));
+            
+            // If envelope is too small, skip
+            if(envelope < 0.01) continue;
+
+            // 2. Carrier (Sine) - Wavelength determines wiggles
+            // Phase moves with time
+            const k = (2 * Math.PI) / lambda;
+            const wave = Math.cos(k * (x - particleX) - time * freq);
+            
+            // Combine
+            const amplitude = 100; // Max height in pixels
+            const y = (height / 2) + (wave * envelope * amplitude);
+            
+            if(first) { ctx.moveTo(x, y); first = false; }
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // --- Draw The Envelope (Dashed Line) ---
+        // Shows the probability container
+        if (quantumness > 0.3) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.setLineDash([5, 5]);
+            for(let x = startX; x <= endX; x+=5) {
+                const dist = (x - particleX);
+                const sigma = packetWidth / 6;
+                const envelope = Math.exp(- (dist * dist) / (2 * sigma * sigma));
+                const y = (height / 2) - (envelope * 100);
+                if(x===startX) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            // Bottom half of envelope
+            ctx.beginPath();
+            for(let x = startX; x <= endX; x+=5) {
+                const dist = (x - particleX);
+                const sigma = packetWidth / 6;
+                const envelope = Math.exp(- (dist * dist) / (2 * sigma * sigma));
+                const y = (height / 2) + (envelope * 100);
+                if(x===startX) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+        } else {
+            // CLASSIC MODE: Draw a solid dot
+            ctx.beginPath();
+            ctx.arc(particleX, height/2, 10, 0, Math.PI*2);
+            ctx.fill();
+            // Add a "speed line" trail
+            ctx.beginPath();
+            ctx.moveTo(particleX - 30, height/2);
+            ctx.lineTo(particleX - 10, height/2);
+            ctx.strokeStyle = `rgba(${r},${g},${b}, 0.5)`;
+            ctx.stroke();
+        }
+
+        time++;
+        requestAnimationFrame(draw);
+    }
+
+    // Init
+    updatePhysics();
+    draw();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step 3: Planck's Quantum Resonator</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0d0d0d; color: #eee; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+        h2 { margin-top: 0; font-weight: 300; letter-spacing: 1px; color: #38bdf8; }
+        p { color: #888; max-width: 600px; text-align: center; margin-bottom: 20px;}
+        
+        .canvas-wrapper { position: relative; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        canvas { display: block; background: #1a1a1a; }
+        
+        .label { position: absolute; top: 20px; font-size: 12px; font-weight: bold; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 2px; pointer-events: none;}
+        .label-left { left: 20px; }
+        .label-center { left: 50%; transform: translateX(-50%); color: rgba(0, 255, 255, 0.6); text-shadow: 0 0 10px rgba(0,255,255,0.4); }
+        .label-right { right: 20px; }
+
+        .controls { background: #222; padding: 20px; width: 800px; border-radius: 0 0 8px 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; box-sizing: border-box; }
+        .control-group { display: flex; flex-direction: column; background: #2a2a2a; padding: 15px; border-radius: 8px; }
+        
+        label { font-size: 0.85em; color: #aaa; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;}
+        .val { color: #fff; font-family: monospace; font-size: 1.1em; background: #000; padding: 2px 6px; border-radius: 4px;}
+        input[type=range] { cursor: pointer; width: 100%; }
+
+        .status-panel { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; background: #111; padding: 10px 20px; border-radius: 6px; border: 1px solid #333;}
+        .cost-display { font-weight: bold; }
+        .safe { color: #4ade80; }
+        .expensive { color: #f43f5e; }
+    </style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script type="text/babel">
+
+    const ResonatorSideView = () => {
+        const canvasRef = React.useRef(null);
+        
+        // --- Physics State ---
+        // Frequency: The color of light (Left = Red/Low, Right = UV/High)
+        const [frequency, setFrequency] = React.useState(0.05);
+        
+        // Temperature: The energy available in the furnace
+        const [temperature, setTemperature] = React.useState(100);
+
+        // Constants
+        const wallSpacing = 150;
+        
+        // --- The Quantum Calculation ---
+        // This is Planck's Law logic simplified for visuals:
+        // High Freq (Blue) costs more. If Temp is low, Amplitude -> 0.
+        const calculateAmplitude = (freq, temp) => {
+             // Cost increases linearly with frequency (E = hf)
+             const cost = freq * 8000; 
+             
+             // Available energy depends on Temperature
+             // Probability = 1 / (e^(cost/temp) - 1)  <-- The Bose-Einstein Factor
+             // We simplify slightly for smoother visuals:
+             const probability = 1 / (Math.exp(cost / temp) - 0.2);
+             
+             // Cap amplitude for sanity
+             return Math.min(120, probability * 100); 
+        };
+
+        const innerAmp = calculateAmplitude(frequency, temperature);
+        const costVal = Math.round(frequency * 8000);
+        const isExpensive = costVal > temperature;
+
+        React.useEffect(() => {
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext('2d');
+            let frameId;
+            let time = 0;
+
+            const render = () => {
+                const w = canvas.width;
+                const h = canvas.height;
+                const cy = h / 2;
+                const cx = w / 2;
+                const leftWall = cx - wallSpacing;
+                const rightWall = cx + wallSpacing;
+
+                // Clear
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(0, 0, w, h);
+
+                // Draw Active Zone
+                // If amplitude is high, glow is bright. If low (frozen), dark.
+                const glowOpacity = Math.min(0.2, innerAmp / 500);
+                ctx.fillStyle = `rgba(0, 255, 255, ${glowOpacity})`;
+                ctx.fillRect(leftWall, 0, wallSpacing * 2, h);
+
+                // Draw Walls
+                ctx.beginPath();
+                ctx.moveTo(leftWall, 0); ctx.lineTo(leftWall, h);
+                ctx.moveTo(rightWall, 0); ctx.lineTo(rightWall, h);
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Draw Center Line
+                ctx.beginPath();
+                ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+                ctx.strokeStyle = '#333';
+                ctx.stroke();
+
+                // Draw The Wave
+                ctx.beginPath();
+                for (let x = 0; x < w; x++) {
+                    const isInside = x > leftWall && x < rightWall;
+                    
+                    // Logic: Outside is always random "background noise" (small)
+                    // Inside is strictly controlled by Planck's Law
+                    const currentAmp = isInside ? innerAmp : 10; 
+
+                    const y = cy + Math.sin(x * frequency - time) * currentAmp;
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+
+                // Color coding the wave
+                // Red for Low Freq, Violet for High Freq
+                const hue = 360 - (frequency * 1000); 
+                // If Amp is 0 (frozen out), line goes grey
+                const saturation = innerAmp < 2 ? '0%' : '100%';
+                
+                ctx.strokeStyle = `hsl(${hue}, ${saturation}, 50%)`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Vertical connectors
+                ctx.lineWidth = 1;
+                for (let x = 0; x < w; x+=20) {
+                     const isInside = x > leftWall && x < rightWall;
+                     if(!isInside) continue; // Only draw inside resonator
+                     
+                     const y = cy + Math.sin(x * frequency - time) * innerAmp;
+                     const alpha = Math.abs(y - cy) / 100;
+                     ctx.strokeStyle = `hsla(${hue}, ${saturation}, 50%, ${alpha})`;
+                     ctx.beginPath();
+                     ctx.moveTo(x, cy);
+                     ctx.lineTo(x, y);
+                     ctx.stroke();
+                }
+
+                time += 0.15;
+                frameId = requestAnimationFrame(render);
+            };
+
+            render();
+            return () => cancelAnimationFrame(frameId);
+        }, [frequency, temperature, innerAmp]);
+
+        return (
+            <div>
+                <h2>Step 3: Planck's "Quantum Filter"</h2>
+                <p>The walls of the furnace are resonators. They check the frequency cost. <br/>If <strong>Cost > Temperature</strong>, the resonator stays flat (Energy Rejection).</p>
+                
+                <div className="canvas-wrapper">
+                    <canvas ref={canvasRef} width={800} height={300} />
+                    <div className="label label-left">Background Noise</div>
+                    <div className="label label-center">
+                        {innerAmp < 5 ? "FROZEN (Quantized)" : "ACTIVE RESONANCE"}
+                    </div>
+                    <div className="label label-right">Background Noise</div>
+                </div>
+
+                <div className="controls">
+                    <div className="status-panel">
+                        <span>Energy Cost: <span className={isExpensive ? "expensive" : "safe"}>{costVal}</span></span>
+                        <span>Available Temp: <span className="val">{temperature}</span></span>
+                        <span>Result: <strong style={{color: innerAmp < 5 ? '#f43f5e' : '#4ade80'}}>
+                            {innerAmp < 5 ? "BLOCKED (UV Safe)" : "ALLOWED"}
+                        </strong></span>
+                    </div>
+
+                    <div className="control-group">
+                        <label>
+                            <span>Frequency (Color)</span> 
+                            <span className="val" style={{color: `hsl(${360 - frequency*1000}, 100%, 50%)`}}>
+                                {frequency < 0.1 ? "Red (Cheap)" : "UV (Expensive)"}
+                            </span>
+                        </label>
+                        <input type="range" min="0.05" max="0.35" step="0.001" 
+                            value={frequency} onChange={e => setFrequency(Number(e.target.value))} />
+                        <small style={{color:'#666', marginTop:'5px'}}>Slide Right to increase "Cost"</small>
+                    </div>
+
+                    <div className="control-group">
+                        <label>
+                            <span>Furnace Temperature</span> 
+                            <span className="val">{temperature} K</span>
+                        </label>
+                        <input type="range" min="50" max="1000" step="10"
+                            value={temperature} onChange={e => setTemperature(Number(e.target.value))} />
+                        <small style={{color:'#666', marginTop:'5px'}}>Slide Right to "Pay" for high frequencies</small>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<ResonatorSideView />);
+
+</script>
+
+</body>
+</html>

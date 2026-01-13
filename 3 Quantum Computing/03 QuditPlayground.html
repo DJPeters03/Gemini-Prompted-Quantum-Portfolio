@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Qudit Playground</title>
+    <style>
+        :root { --bg: #0f1015; --panel: #1b1c24; --accent: #00d4ff; --text: #e0e0e0; }
+        body { 
+            font-family: 'Segoe UI', monospace; background: var(--bg); color: var(--text); 
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 20px;
+        }
+        h1 { margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; border-bottom: 2px solid var(--accent); }
+        
+        /* Layout */
+        .main-stage {
+            display: flex; flex-direction: column; gap: 30px; align-items: center; 
+            background: var(--panel); padding: 40px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-top: 20px;
+        }
+
+        /* Visualization Area */
+        .visualization { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; min-height: 200px; align-items: flex-end;}
+        .level-container { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 80px; }
+        
+        canvas { 
+            background: #111; border-radius: 50%; border: 2px solid #333; 
+            transition: border-color 0.3s;
+        }
+        
+        .level-label { font-size: 1.2em; font-weight: bold; color: #666; }
+        .prob-label { font-size: 0.9em; color: var(--accent); }
+
+        /* Controls */
+        .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; width: 100%; max-width: 500px; }
+        
+        button { 
+            padding: 12px; border: none; border-radius: 6px; 
+            background: #2a2b36; color: white; font-family: monospace; font-size: 1.1em;
+            cursor: pointer; transition: all 0.2s; border: 1px solid #444;
+        }
+        button:hover { background: #3a3b46; border-color: var(--accent); transform: translateY(-2px); }
+        button:active { transform: translateY(0); }
+        
+        .measure-btn { grid-column: span 3; background: #d9534f; border-color: #d9534f; font-weight: bold; margin-top: 10px;}
+        .measure-btn:hover { background: #c9302c; }
+
+        .settings { margin-bottom: 20px; display: flex; gap: 10px; align-items: center; }
+        select { padding: 8px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; }
+
+        .explanation { max-width: 600px; color: #888; font-size: 0.9em; line-height: 1.5; margin-top: 20px; text-align: center;}
+        
+        /* Animation class for measurement */
+        .measured { border-color: #d9534f !important; box-shadow: 0 0 20px #d9534f; }
+    </style>
+</head>
+<body>
+
+    <h1>Qudit Playground</h1>
+
+    <div class="settings">
+        <label>Dimensions (d):</label>
+        <select id="dimSelect" onchange="resetSystem()">
+            <option value="3" selected>3 (Qutrit)</option>
+            <option value="4">4 (Ququart)</option>
+            <option value="5">5 (Quintit)</option>
+            <option value="6">6</option>
+        </select>
+        <button onclick="resetSystem()" style="padding: 8px 15px; font-size: 0.9em;">Reset</button>
+    </div>
+
+    <div class="main-stage">
+        <div class="visualization" id="visualizer"></div>
+
+        <div class="controls">
+            <button onclick="applyGate('X')">X (Shift)</button>
+            <div style="font-size: 10px; color:#555; grid-column: span 2; display:flex; align-items:center;">Cyclic shift: |0⟩→|1⟩→...→|0⟩</div>
+
+            <button onclick="applyGate('Z')">Z (Clock)</button>
+            <div style="font-size: 10px; color:#555; grid-column: span 2; display:flex; align-items:center;">Adds phase ω^k to state |k⟩</div>
+
+            <button onclick="applyGate('H')">H (DFT)</button>
+            <div style="font-size: 10px; color:#555; grid-column: span 2; display:flex; align-items:center;">Creates Superposition</div>
+
+            <button class="measure-btn" onclick="measure()">MEASURE</button>
+        </div>
+    </div>
+
+    <div class="explanation">
+        <strong>How to read this:</strong><br>
+        The size of the blue circle is the probability.<br>
+        The white needle inside is the Quantum Phase.<br>
+        <br>
+        Try pressing <strong>H</strong> to create a superposition, then <strong>Z</strong> to watch the phases rotate relative to each other.
+    </div>
+
+<script>
+/**
+ * Qudit Logic Engine
+ * Handles complex linear algebra for d-dimensions
+ */
+class Complex {
+    constructor(re, im) { this.re = re; this.im = im; }
+    add(c) { return new Complex(this.re + c.re, this.im + c.im); }
+    sub(c) { return new Complex(this.re - c.re, this.im - c.im); }
+    mul(c) { return new Complex(this.re * c.re - this.im * c.im, this.re * c.im + this.im * c.re); }
+    scale(s) { return new Complex(this.re * s, this.im * s); }
+    magSq() { return this.re**2 + this.im**2; }
+    phase() { return Math.atan2(this.im, this.re); }
+    
+    static exp(phi) { return new Complex(Math.cos(phi), Math.sin(phi)); }
+}
+
+let d = 3; // Dimension
+let state = []; // Array of Complex numbers
+
+function resetSystem() {
+    d = parseInt(document.getElementById('dimSelect').value);
+    
+    // Init state |0>
+    state = new Array(d).fill(null).map((_, i) => i === 0 ? new Complex(1, 0) : new Complex(0, 0));
+    
+    createDOM();
+    render();
+}
+
+function createDOM() {
+    const viz = document.getElementById('visualizer');
+    viz.innerHTML = '';
+    
+    for(let i=0; i<d; i++) {
+        const div = document.createElement('div');
+        div.className = 'level-container';
+        div.innerHTML = `
+            <canvas id="cvs_${i}" width="80" height="80"></canvas>
+            <div class="level-label">|${i}⟩</div>
+            <div class="prob-label" id="prob_${i}">0%</div>
+        `;
+        viz.appendChild(div);
+    }
+}
+
+// --- Gates ---
+
+function applyGate(type) {
+    let newState = new Array(d).fill(new Complex(0, 0));
+
+    if (type === 'X') {
+        // Generalized X (Shift Gate): |k> -> |k+1 mod d>
+        for(let k=0; k<d; k++) {
+            let target = (k + 1) % d;
+            newState[target] = state[k];
+        }
+    } 
+    else if (type === 'Z') {
+        // Generalized Z (Clock Gate): |k> -> w^k |k> where w = e^(2pi*i / d)
+        const omega = (2 * Math.PI) / d;
+        for(let k=0; k<d; k++) {
+            let phaseShift = Complex.exp(omega * k);
+            newState[k] = state[k].mul(phaseShift);
+        }
+    } 
+    else if (type === 'H') {
+        // Generalized Hadamard (Discrete Fourier Transform matrix)
+        // H_jk = (1/sqrt(d)) * w^(jk)
+        const omega = (2 * Math.PI) / d;
+        const scale = 1 / Math.sqrt(d);
+        
+        for(let row=0; row<d; row++) {
+            let sum = new Complex(0, 0);
+            for(let col=0; col<d; col++) {
+                // w^(row * col)
+                let phase = Complex.exp(omega * row * col);
+                // matrix element * state vector element
+                let term = phase.mul(state[col]);
+                sum = sum.add(term);
+            }
+            newState[row] = sum.scale(scale);
+        }
+    }
+
+    state = newState;
+    render();
+}
+
+function measure() {
+    // Calculate probabilities
+    let probs = state.map(c => c.magSq());
+    let r = Math.random();
+    let cumulative = 0;
+    let resultIndex = 0;
+    
+    for(let i=0; i<d; i++) {
+        cumulative += probs[i];
+        if (r <= cumulative) {
+            resultIndex = i;
+            break;
+        }
+    }
+    
+    // Collapse State
+    state = state.map((_, i) => i === resultIndex ? new Complex(1, 0) : new Complex(0, 0));
+    
+    render();
+    
+    // Visual flair
+    const canvas = document.getElementById(`cvs_${resultIndex}`);
+    canvas.classList.add('measured');
+    setTimeout(() => canvas.classList.remove('measured'), 500);
+}
+
+// --- Rendering ---
+
+function render() {
+    for(let i=0; i<d; i++) {
+        const cvs = document.getElementById(`cvs_${i}`);
+        const ctx = cvs.getContext('2d');
+        const amp = state[i];
+        const prob = amp.magSq();
+        
+        // Clear
+        ctx.clearRect(0, 0, 80, 80);
+        
+        // Draw Disk
+        // Radius corresponds to Magnitude (max radius 35)
+        const radius = 35 * Math.sqrt(Math.sqrt(prob)); // Sqrt(Sqrt) for better visual scaling of small amplitudes
+        const phase = amp.phase();
+        
+        const centerX = 40;
+        const centerY = 40;
+        
+        if (prob > 0.001) {
+            // Fill Circle (Color based on phase allows "rainbow" visualization, but let's stick to blue + needle for clarity)
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            
+            // Dynamic color based on phase
+            // Map phase (-PI to PI) to Hue (0 to 360)
+            let hue = ((phase + Math.PI) / (2 * Math.PI)) * 360;
+            ctx.fillStyle = `hsl(${hue}, 70%, 60%)`;
+            ctx.fill();
+            
+            // Phase Needle (from center to edge of circle)
+            // Note: Canvas Y is inverted
+            let needleX = centerX + radius * Math.cos(phase);
+            let needleY = centerY + radius * Math.sin(phase); // Normally -sin, but let's follow standard math rotation visually
+            
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(needleX, needleY);
+            ctx.stroke();
+            
+            // Center Dot
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 2, 0, 2*Math.PI);
+            ctx.fill();
+        } else {
+            // Empty placeholder
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 5, 0, 2*Math.PI);
+            ctx.stroke();
+        }
+
+        // Update Text
+        document.getElementById(`prob_${i}`).innerText = (prob * 100).toFixed(1) + "%";
+    }
+}
+
+// Init
+resetSystem();
+
+</script>
+</body>
+</html>

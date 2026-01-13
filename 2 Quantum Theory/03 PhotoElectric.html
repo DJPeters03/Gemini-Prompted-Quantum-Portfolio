@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>03 - The Photoelectric Effect</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar Controls */
+        #sidebar {
+            width: 320px;
+            background: #111;
+            border-right: 1px solid #333;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        h1 { margin: 0 0 5px 0; font-size: 1.6rem; color: #fff; }
+        h2 { margin: 0 0 30px 0; font-size: 0.9rem; color: #666; font-weight: normal; }
+
+        .control-group { margin-bottom: 30px; }
+        label { display: flex; justify-content: space-between; color: #aaa; margin-bottom: 10px; font-size: 0.9rem; }
+        
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+            margin-bottom: 5px;
+        }
+
+        /* Meters */
+        .meter-box {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+        .meter-label { font-size: 0.8rem; color: #888; margin-bottom: 5px; }
+        .meter-bar-bg { width: 100%; height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
+        .meter-bar-fill { height: 100%; width: 0%; background: #00d2ff; transition: width 0.1s; }
+
+        .status-text {
+            font-family: monospace;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 5px;
+            font-size: 1.1rem;
+        }
+
+        /* Canvas Area */
+        #canvas-wrapper {
+            flex-grow: 1;
+            position: relative;
+            background: #000;
+        }
+
+        canvas { display: block; }
+
+        .overlay-instruction {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
+            color: #555;
+            pointer-events: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h1>Quantum Theory</h1>
+        <h2>03. The Photoelectric Effect</h2>
+
+        <div class="control-group">
+            <label>
+                <span>LIGHT FREQUENCY (Color)</span>
+                <span id="freq-val">Red</span>
+            </label>
+            <input type="range" id="freqSlider" min="400" max="850" step="5" value="450">
+            <div style="font-size:0.8em; color:#666;">Controls Photon Energy (E=hf)</div>
+        </div>
+
+        <div class="control-group">
+            <label>
+                <span>INTENSITY (Brightness)</span>
+                <span id="int-val">50%</span>
+            </label>
+            <input type="range" id="intSlider" min="1" max="100" value="30">
+            <div style="font-size:0.8em; color:#666;">Controls Number of Photons</div>
+        </div>
+
+        <div class="meter-box">
+            <div class="meter-label">ELECTRON KINETIC ENERGY</div>
+            <div class="meter-bar-bg">
+                <div class="meter-bar-fill" id="energy-bar"></div>
+            </div>
+            <div class="status-text" id="status-text">NO EMISSION</div>
+        </div>
+
+        <div style="margin-top:auto; font-size: 0.85rem; color: #888; line-height: 1.4;">
+            <strong>The Discovery:</strong><br>
+            Below a certain frequency (threshold), electrons are stuck. Increasing intensity does nothing. You must change the <em>color</em> (frequency) to eject them.
+        </div>
+    </div>
+
+    <div id="canvas-wrapper">
+        <canvas id="simCanvas"></canvas>
+        <div class="overlay-instruction">Increase Frequency to Green/Blue to eject electrons.</div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('canvas-wrapper');
+    
+    // UI Elements
+    const freqSlider = document.getElementById('freqSlider');
+    const intSlider = document.getElementById('intSlider');
+    const freqLabel = document.getElementById('freq-val');
+    const intLabel = document.getElementById('int-val');
+    const energyBar = document.getElementById('energy-bar');
+    const statusText = document.getElementById('status-text');
+
+    // State
+    let width, height;
+    let frequency = 450; // Visual Hz (mapped from slider)
+    let intensity = 30;
+    
+    // Physics Constants (Scaled for Simulation)
+    const THRESHOLD_FREQ = 550; // The "Work Function" cutoff
+    
+    let photons = [];
+    let electrons = [];
+
+    // --- Setup ---
+    function resize() {
+        width = wrapper.offsetWidth;
+        height = wrapper.offsetHeight;
+        canvas.width = width;
+        canvas.height = height;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Interaction ---
+    freqSlider.addEventListener('input', (e) => {
+        frequency = parseInt(e.target.value);
+        updateUI();
+    });
+
+    intSlider.addEventListener('input', (e) => {
+        intensity = parseInt(e.target.value);
+        intLabel.innerText = intensity + "%";
+    });
+
+    function updateUI() {
+        // Map slider (400-850) to Color Name roughly
+        let colorName = "Red";
+        if(frequency > 500) colorName = "Orange";
+        if(frequency > 550) colorName = "Yellow";
+        if(frequency > 600) colorName = "Green";
+        if(frequency > 700) colorName = "Blue";
+        if(frequency > 800) colorName = "Violet";
+        
+        freqLabel.innerText = colorName;
+        freqLabel.style.color = getWavelengthColor(frequency);
+
+        // Update Energy Meter
+        if (frequency > THRESHOLD_FREQ) {
+            const excessEnergy = frequency - THRESHOLD_FREQ;
+            const percentage = Math.min((excessEnergy / 300) * 100, 100);
+            energyBar.style.width = percentage + "%";
+            energyBar.style.backgroundColor = "#00d2ff";
+            statusText.innerText = "EJECTING";
+            statusText.style.color = "#00d2ff";
+        } else {
+            energyBar.style.width = "0%";
+            statusText.innerText = "NO EMISSION";
+            statusText.style.color = "#555";
+        }
+    }
+
+    // --- Classes ---
+
+    class Photon {
+        constructor() {
+            this.x = Math.random() * (width - 100) + 50;
+            this.y = -20;
+            this.speed = 5 + Math.random();
+            this.freq = frequency;
+            this.color = getWavelengthColor(frequency);
+            this.dead = false;
+            // Wiggle offset
+            this.wiggleOffset = Math.random() * 10;
+        }
+
+        update() {
+            this.y += this.speed;
+            
+            // Hit the Metal Plate (at bottom 20% of screen)
+            const plateY = height * 0.75;
+            
+            if (this.y > plateY) {
+                this.dead = true;
+                // Interaction Logic
+                if (this.freq > THRESHOLD_FREQ) {
+                    // Success! Eject Electron
+                    spawnElectron(this.x, plateY, this.freq);
+                    createSpark(this.x, plateY, this.color);
+                } else {
+                    // Fail! Just heat (fizzle)
+                    createFizzle(this.x, plateY);
+                }
+            }
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 2;
+            
+            // Draw Sine Wave Packet
+            const packetLen = 20;
+            // Higher freq = tighter waves
+            const wiggleTightness = this.freq / 2000; 
+            
+            ctx.moveTo(this.x, this.y);
+            
+            for(let i=0; i<packetLen; i++) {
+                // Vertical sine wave
+                const wx = this.x + Math.sin((this.y + i*2) * wiggleTightness + this.wiggleOffset) * 5;
+                const wy = this.y - i;
+                ctx.lineTo(wx, wy);
+            }
+            ctx.stroke();
+        }
+    }
+
+    class Electron {
+        constructor(x, y, photonFreq) {
+            this.x = x;
+            this.y = y;
+            // KE = hf - WorkFunction
+            // Speed is proportional to excess frequency
+            const excessEnergy = photonFreq - THRESHOLD_FREQ;
+            this.vy = -(1 + (excessEnergy / 40)); 
+            this.vx = (Math.random() - 0.5) * 2;
+            this.dead = false;
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            
+            if (this.y < -10 || this.x < 0 || this.x > width) {
+                this.dead = true;
+            }
+        }
+
+        draw() {
+            ctx.fillStyle = "#ffff00";
+            ctx.shadowColor = "#ffff00";
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, 4, 0, Math.PI*2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    // Simple visual effects
+    let effects = [];
+    function createSpark(x, y, color) {
+        effects.push({x, y, color, life: 10, type: 'spark'});
+    }
+    function createFizzle(x, y) {
+        effects.push({x, y, color: '#555', life: 10, type: 'fizzle'});
+    }
+
+    function spawnElectron(x, y, freq) {
+        electrons.push(new Electron(x, y, freq));
+    }
+
+    function getWavelengthColor(freq) {
+        // Map internal freq (400-850) to visible spectrum
+        // Low freq = Red, High freq = Violet
+        // In this simulation slider: 400(Red) -> 850(Violet)
+        
+        // Normalize 0 to 1
+        const t = (freq - 400) / 450;
+        
+        // Simple lerp through HSL
+        // Red (0deg) to Violet (270deg)
+        const hue = t * 280; 
+        return `hsl(${hue}, 100%, 50%)`;
+    }
+
+    // --- Main Loop ---
+    function animate() {
+        // Clear
+        ctx.fillStyle = "#0d0d0d";
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw Metal Plate
+        ctx.fillStyle = "#333";
+        ctx.fillRect(0, height * 0.75, width, height * 0.25);
+        ctx.strokeStyle = "#555";
+        ctx.beginPath();
+        ctx.moveTo(0, height * 0.75);
+        ctx.lineTo(width, height * 0.75);
+        ctx.stroke();
+        ctx.fillStyle = "#888";
+        ctx.fillText("METAL PLATE (Work Function: Green Light)", 20, height * 0.75 + 30);
+
+        // Spawn Photons
+        // Probability based on intensity slider
+        if (Math.random() < intensity / 100) {
+            photons.push(new Photon());
+        }
+
+        // Update & Draw Photons
+        for (let i = photons.length - 1; i >= 0; i--) {
+            photons[i].update();
+            photons[i].draw();
+            if (photons[i].dead) photons.splice(i, 1);
+        }
+
+        // Update & Draw Electrons
+        for (let i = electrons.length - 1; i >= 0; i--) {
+            electrons[i].update();
+            electrons[i].draw();
+            if (electrons[i].dead) electrons.splice(i, 1);
+        }
+
+        // Effects
+        for (let i = effects.length - 1; i >= 0; i--) {
+            const e = effects[i];
+            e.life--;
+            ctx.fillStyle = e.color;
+            ctx.beginPath();
+            if (e.type === 'spark') {
+                ctx.arc(e.x, e.y, 15 - e.life, 0, Math.PI*2); // Expanding ring
+                ctx.stroke();
+            } else {
+                ctx.font = "10px monospace";
+                ctx.fillText("x", e.x, e.y); // Little 'x' for fizzle
+            }
+            if (e.life <= 0) effects.splice(i, 1);
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    updateUI();
+    animate();
+
+</script>
+</body>
+</html>

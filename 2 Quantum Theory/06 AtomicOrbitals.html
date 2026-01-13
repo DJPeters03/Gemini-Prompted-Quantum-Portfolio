@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>06 - The Wave Function (Orbitals)</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        #sidebar {
+            width: 320px;
+            background: #111;
+            border-right: 1px solid #333;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        h1 { margin: 0 0 5px 0; font-size: 1.6rem; color: #fff; }
+        h2 { margin: 0 0 30px 0; font-size: 0.9rem; color: #666; font-weight: normal; }
+
+        .btn-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px; }
+        
+        button {
+            padding: 15px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #888;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        button:hover { background: #222; color: #fff; }
+        button.active { border-color: #00d2ff; background: rgba(0, 210, 255, 0.1); color: #00d2ff; }
+        
+        .shape-icon { font-family: monospace; font-weight: bold; font-size: 1.2rem; }
+
+        .math-display {
+            background: #000;
+            border: 1px solid #333;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            color: #00ff88;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+
+        /* Canvas */
+        #canvas-wrapper {
+            flex-grow: 1;
+            position: relative;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #000 90%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: move; /* Indicates rotation */
+        }
+        
+        canvas { display: block; }
+
+        .instructions {
+            position: absolute;
+            bottom: 30px;
+            color: #555;
+            pointer-events: none;
+            text-align: center;
+            width: 100%;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h1>Quantum Theory</h1>
+        <h2>06. The Wave Function (&Psi;)</h2>
+
+        <div class="math-display" id="math-box">
+            Select an orbital to see its Wave Function math.
+        </div>
+
+        <div class="btn-group">
+            <button onclick="setOrbital('1s')" id="btn-1s" class="active">
+                <div>
+                    <strong>1s Orbital</strong><br>
+                    <span style="font-size:0.8em">Ground State (n=1, l=0)</span>
+                </div>
+                <span class="shape-icon">●</span>
+            </button>
+            
+            <button onclick="setOrbital('2p')" id="btn-2p">
+                <div>
+                    <strong>2p Orbital</strong><br>
+                    <span style="font-size:0.8em">Excited (n=2, l=1)</span>
+                </div>
+                <span class="shape-icon">∞</span>
+            </button>
+            
+            <button onclick="setOrbital('3d')" id="btn-3d">
+                <div>
+                    <strong>3d Orbital</strong><br>
+                    <span style="font-size:0.8em">High Energy (n=3, l=2)</span>
+                </div>
+                <span class="shape-icon">❖</span>
+            </button>
+        </div>
+
+        <div style="margin-top:auto; font-size: 0.85rem; color: #888; line-height: 1.5;">
+            <strong>The Reality:</strong><br>
+            Electrons are not planets orbiting a sun. They are standing waves.
+            <br><br>
+            The dots represent the <strong>Probability Density</strong> (|&Psi;|<sup>2</sup>) of finding the electron at that specific point.
+        </div>
+    </div>
+
+    <div id="canvas-wrapper">
+        <canvas id="simCanvas"></canvas>
+        <div class="instructions">Click & Drag to Rotate the 3D Cloud</div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('canvas-wrapper');
+    const mathBox = document.getElementById('math-box');
+
+    let width, height;
+    let points = []; // Stores {x, y, z, alpha}
+    let currentOrbital = '1s';
+    
+    // Rotation State
+    let angleX = 0;
+    let angleY = 0;
+    let isDragging = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    function resize() {
+        width = wrapper.offsetWidth;
+        height = wrapper.offsetHeight;
+        canvas.width = width;
+        canvas.height = height;
+        // Re-center logic handled in draw
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Math Functions (Monte Carlo Sampling) ---
+    
+    // 1s Orbital: n=1, l=0 (Sphere)
+    // Prob ~ e^(-2r)
+    function prob1s(x, y, z) {
+        const r = Math.sqrt(x*x + y*y + z*z);
+        // Scaled for visual fit (r in arbitrary units)
+        return Math.exp(-2 * r);
+    }
+
+    // 2p Orbital: n=2, l=1 (Dumbbell along z-axis)
+    // Prob ~ r^2 * e^(-r) * cos^2(theta)
+    function prob2p(x, y, z) {
+        const r = Math.sqrt(x*x + y*y + z*z);
+        if (r === 0) return 0;
+        const cosTheta = z / r;
+        return (r * r) * Math.exp(-r) * (cosTheta * cosTheta);
+    }
+
+    // 3d Orbital: n=3, l=2 (dz2 - Donut/Lobes)
+    // Prob ~ r^4 * e^(-2r/3) * (3cos^2 - 1)^2
+    function prob3d(x, y, z) {
+        const r = Math.sqrt(x*x + y*y + z*z);
+        if (r === 0) return 0;
+        const cosTheta = z / r;
+        const angular = (3 * cosTheta * cosTheta - 1);
+        return (r * r) * Math.exp(-r/1.5) * (angular * angular);
+    }
+
+    function generateCloud(type) {
+        points = [];
+        const count = 4000; // Number of dots
+        let attempts = 0;
+        
+        // Ranges and Probability Functions depend on orbital
+        let func;
+        let scaleRange = 6; 
+        
+        if (type === '1s') { func = prob1s; scaleRange = 3; }
+        else if (type === '2p') { func = prob2p; scaleRange = 8; }
+        else if (type === '3d') { func = prob3d; scaleRange = 12; }
+
+        // Rejection Sampling to generate correct distribution
+        while (points.length < count && attempts < 100000) {
+            attempts++;
+            
+            // Random point in box [-range, range]
+            const x = (Math.random() - 0.5) * 2 * scaleRange;
+            const y = (Math.random() - 0.5) * 2 * scaleRange;
+            const z = (Math.random() - 0.5) * 2 * scaleRange;
+            
+            // Calculate probability density at this point
+            const p = func(x, y, z);
+            
+            // Monte Carlo check
+            // We verify against a random value. If p is high, we keep it.
+            // Adjust threshold divisor to density
+            let threshold = Math.random();
+            // Normalization hacks for visuals
+            if (type === '2p') threshold *= 0.2; 
+            if (type === '3d') threshold *= 0.5;
+
+            if (p > threshold) {
+                // Keep point
+                // Map color based on Z or distance
+                points.push({ x, y, z });
+            }
+        }
+    }
+
+    // --- Interaction ---
+
+    function setOrbital(type) {
+        currentOrbital = type;
+        
+        // Update Buttons
+        document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        document.getElementById('btn-' + type).classList.add('active');
+
+        // Update Math Text
+        if (type === '1s') mathBox.innerHTML = "&Psi;<sub>1,0,0</sub> &propto; e<sup>-r</sup><br><span style='color:#888'>Exponential Decay</span>";
+        if (type === '2p') mathBox.innerHTML = "&Psi;<sub>2,1,0</sub> &propto; r&middot;e<sup>-r/2</sup>cos(&theta;)<br><span style='color:#888'>Angular Dependence</span>";
+        if (type === '3d') mathBox.innerHTML = "&Psi;<sub>3,2,0</sub> &propto; r<sup>2</sup>e<sup>-r/3</sup>(3cos<sup>2</sup>&theta;-1)<br><span style='color:#888'>Complex Harmonics</span>";
+
+        generateCloud(type);
+    }
+
+    // Mouse Rotation Logic
+    wrapper.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+    });
+    window.addEventListener('mouseup', () => isDragging = false);
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const deltaX = e.clientX - lastMouseX;
+        const deltaY = e.clientY - lastMouseY;
+        
+        angleY += deltaX * 0.01;
+        angleX += deltaY * 0.01;
+        
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+    });
+
+    // Touch support
+    wrapper.addEventListener('touchstart', (e) => {
+        isDragging = true;
+        lastMouseX = e.touches[0].clientX;
+        lastMouseY = e.touches[0].clientY;
+    });
+    window.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        const deltaX = e.touches[0].clientX - lastMouseX;
+        const deltaY = e.touches[0].clientY - lastMouseY;
+        angleY += deltaX * 0.01;
+        angleX += deltaY * 0.01;
+        lastMouseX = e.touches[0].clientX;
+        lastMouseY = e.touches[0].clientY;
+    });
+
+
+    // --- Rendering ---
+
+    function draw() {
+        // Clear
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, width, height);
+        
+        // Center
+        const cx = width / 2;
+        const cy = height / 2;
+        const scale = Math.min(width, height) / 10; // Zoom level
+
+        // Sort points by Z (depth) so dots in back are drawn first (simple painter's algo)
+        // Note: For simple additive dots, sorting isn't strictly necessary but looks better with color/size variation
+        
+        // Rotate and Project Points
+        const projectedPoints = points.map(p => {
+            // Rotation Y
+            let x1 = p.x * Math.cos(angleY) - p.z * Math.sin(angleY);
+            let z1 = p.x * Math.sin(angleY) + p.z * Math.cos(angleY);
+            // Rotation X
+            let y2 = p.y * Math.cos(angleX) - z1 * Math.sin(angleX);
+            let z2 = p.y * Math.sin(angleX) + z1 * Math.cos(angleX);
+            let x2 = x1;
+
+            // Simple Perspective
+            // Larger z = closer (in this coord system, standard 3D logic varies)
+            // Let's stick to flat orthogonal for scientific clarity, or weak perspective
+            const perspective = 1; 
+
+            return {
+                x: cx + x2 * scale,
+                y: cy + y2 * scale,
+                z: z2,
+                origZ: p.z // for color logic
+            };
+        });
+
+        // Draw points
+        projectedPoints.forEach(p => {
+            const alpha = 0.6 + (p.z / 20); // Fade distant points
+            const size = 1.5 + (p.z / 10);
+            
+            if (alpha < 0.1) return;
+
+            // Color: Blue for positive wavefunction, Red for negative?
+            // Actually, let's just make it look cool (Cyan glow)
+            // Or color based on Z-depth for 3D effect
+            ctx.fillStyle = `rgba(0, 210, 255, ${alpha})`;
+            
+            // For 2p/3d, sometimes we want to show phase (lobes). 
+            // In 2p, top lobe is +, bottom is -. 
+            // Let's color top Cyan, bottom Orange for 2p
+            if (currentOrbital === '2p' || currentOrbital === '3d') {
+                // We need to check rotated position or original position?
+                // Usually phase is property of original wavefunction sign.
+                // 2p: z > 0 is +, z < 0 is -
+                // p.origZ is from the original generation (before rotation)? 
+                // Wait, points[] stores original x,y,z.
+                // Let's find the original point index or just check sign relative to rotation?
+                // Actually easier: just Color by Depth for 3D feel.
+                
+                // Let's stick to simple "Electronic Blue" style
+            }
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, Math.max(0.5, size), 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // Auto rotate slowly if not dragging
+        if (!isDragging) {
+            angleY += 0.003;
+        }
+
+        requestAnimationFrame(draw);
+    }
+
+    // Init
+    setOrbital('1s');
+    draw();
+
+</script>
+</body>
+</html>

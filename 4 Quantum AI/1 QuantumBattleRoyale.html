@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qubit Battle Royale</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --grid-bg: #161b22;
+            --qubit-base: #30363d;
+            --qubit-safe: #238636; /* Green */
+            --qubit-dead: #da3633; /* Red */
+            --qubit-super: #2f81f7; /* Blue */
+            --text-color: #c9d1d9;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 { margin-bottom: 10px; }
+
+        #controls {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        button {
+            background-color: var(--qubit-super);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            border-radius: 6px;
+            font-family: inherit;
+        }
+
+        button:disabled {
+            background-color: var(--qubit-base);
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        #status {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            height: 1.5em;
+            color: #58a6ff;
+        }
+
+        .arena {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 10px;
+            max-width: 600px;
+            width: 100%;
+            padding: 20px;
+            background-color: var(--grid-bg);
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        .qubit {
+            aspect-ratio: 1;
+            background-color: var(--qubit-base);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            transition: transform 0.2s, background-color 0.3s;
+            position: relative;
+        }
+
+        .qubit span {
+            z-index: 2;
+        }
+
+        /* States */
+        .qubit.eliminated {
+            background-color: var(--qubit-dead);
+            opacity: 0.2;
+            transform: scale(0.8);
+        }
+
+        .qubit.safe {
+            background-color: var(--qubit-safe);
+            box-shadow: 0 0 10px var(--qubit-safe);
+            transform: scale(1.1);
+        }
+
+        .qubit.superposition {
+            background-color: var(--qubit-super);
+            box-shadow: 0 0 15px var(--qubit-super);
+        }
+
+        .qubit.winner {
+            background-color: gold;
+            color: black;
+            transform: scale(1.5);
+            box-shadow: 0 0 30px gold;
+            z-index: 10;
+        }
+
+        /* ID label small */
+        .qubit-id {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            font-size: 0.5rem;
+            opacity: 0.7;
+        }
+
+        #log {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 600px;
+            height: 150px;
+            overflow-y: auto;
+            border: 1px solid #30363d;
+            padding: 10px;
+            background: #000;
+            font-size: 0.9rem;
+        }
+        
+        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 2px;}
+
+    </style>
+</head>
+<body>
+
+    <h1>⚛️ Qubit Battle Royale</h1>
+    
+    <div id="controls">
+        <button id="startBtn" onclick="startBattle()">Initialize 100 Qubits</button>
+    </div>
+
+    <div id="status">Waiting for initialization...</div>
+
+    <div class="arena" id="arena">
+        </div>
+
+    <div id="log"></div>
+
+    <script>
+        const arena = document.getElementById('arena');
+        const statusDisplay = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const logDiv = document.getElementById('log');
+
+        let qubits = [];
+        let round = 0;
+        let activeQubits = [];
+
+        // Initialize the board
+        function initBoard() {
+            arena.innerHTML = '';
+            qubits = [];
+            activeQubits = [];
+            
+            for (let i = 1; i <= 100; i++) {
+                const qDiv = document.createElement('div');
+                qDiv.className = 'qubit';
+                qDiv.id = `q-${i}`;
+                
+                // Qubit Label
+                qDiv.innerHTML = `<span class="qubit-id">${i}</span><span class="val">|0⟩</span>`;
+                
+                arena.appendChild(qDiv);
+                qubits.push({ id: i, element: qDiv, alive: true });
+                activeQubits.push(i);
+            }
+        }
+
+        function log(msg) {
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            div.innerText = msg;
+            logDiv.prepend(div);
+        }
+
+        async function startBattle() {
+            startBtn.disabled = true;
+            round = 0;
+            logDiv.innerHTML = '';
+            initBoard();
+            log("System Initialized: 100 Qubits at Ground State.");
+            
+            // Start the loop
+            await runRound();
+        }
+
+        function wait(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function runRound() {
+            round++;
+            
+            // Check win condition before starting round
+            if (activeQubits.length === 1) {
+                declareWinner(activeQubits[0]);
+                return;
+            }
+            if (activeQubits.length === 0) {
+                // Rare edge case: Everyone died. Reset last round.
+                statusDisplay.innerText = "CRITICAL FAILURE: All collapsed. Retrying round.";
+                return; 
+            }
+
+            statusDisplay.innerText = `Round ${round}: Entering Superposition (5s)...`;
+            log(`Round ${round} Begins. ${activeQubits.length} Survivors.`);
+
+            // 1. Superposition Phase (5 seconds)
+            // Visual effect: flicker values 0 and 1
+            const startTime = Date.now();
+            const duration = 5000;
+            
+            const interval = setInterval(() => {
+                activeQubits.forEach(idx => {
+                    const q = qubits[idx-1];
+                    q.element.classList.add('superposition');
+                    q.element.classList.remove('safe');
+                    const randomVal = Math.random() > 0.5 ? 1 : 0;
+                    q.element.querySelector('.val').innerText = `|${randomVal}⟩`;
+                });
+            }, 100);
+
+            await wait(duration);
+            clearInterval(interval);
+
+            // 2. Collapse Phase
+            statusDisplay.innerText = "MEASURING...";
+            
+            // Logic to prevent 0 survivors if not intended
+            // We generate outcomes. If all are 0, we re-roll immediately to ensure game continues (Sudden Death logic)
+            let roundOutcomes = {};
+            let survivorsCount = 0;
+
+            do {
+                survivorsCount = 0;
+                activeQubits.forEach(id => {
+                    const outcome = Math.random() > 0.5 ? 1 : 0;
+                    roundOutcomes[id] = outcome;
+                    if(outcome === 1) survivorsCount++;
+                });
+                // If everyone dies, re-roll immediately (unless it was already 1 person, handled at start)
+            } while (survivorsCount === 0 && activeQubits.length > 1);
+
+            // Apply Results
+            let nextRoundSurvivors = [];
+            
+            activeQubits.forEach(id => {
+                const q = qubits[id-1];
+                const outcome = roundOutcomes[id];
+                q.element.classList.remove('superposition');
+                q.element.querySelector('.val').innerText = `|${outcome}⟩`;
+
+                if (outcome === 0) {
+                    q.alive = false;
+                    q.element.classList.add('eliminated');
+                } else {
+                    q.element.classList.add('safe');
+                    nextRoundSurvivors.push(id);
+                }
+            });
+
+            const eliminatedCount = activeQubits.length - survivorsCount;
+            log(`Measurements complete. ${eliminatedCount} collapsed to 0.`);
+            
+            activeQubits = nextRoundSurvivors;
+
+            // Wait a moment to see results before next round
+            await wait(2000);
+            
+            // Recursion
+            runRound();
+        }
+
+        function declareWinner(id) {
+            const q = qubits[id-1];
+            q.element.classList.remove('safe');
+            q.element.classList.add('winner');
+            statusDisplay.innerText = `WINNER: QUBIT #${id}`;
+            statusDisplay.style.color = "gold";
+            log(`🏆 Qubit #${id} is the last one standing!`);
+            startBtn.innerText = "Play Again";
+            startBtn.disabled = false;
+        }
+
+        // Initial setup
+        initBoard();
+
+    </script>
+</body>
+</html>

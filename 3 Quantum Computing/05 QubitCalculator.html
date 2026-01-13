@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantum Amplitude Calculator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif; background: #0f1015; color: #fff;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; margin: 0;
+        }
+        .container {
+            background: #1b1c24; padding: 40px; border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 350px; text-align: center;
+            border: 1px solid #333;
+        }
+        h2 { margin-top: 0; color: #00d4ff; }
+        
+        .input-group { margin-bottom: 25px; text-align: left; }
+        label { display: block; font-size: 0.9em; color: #888; margin-bottom: 5px; }
+        
+        input {
+            width: 100%; padding: 10px; box-sizing: border-box;
+            background: #2a2b36; border: 1px solid #444; color: #fff;
+            font-size: 1.2em; border-radius: 5px; outline: none; transition: 0.2s;
+        }
+        input:focus { border-color: #00d4ff; }
+        
+        .prob-display {
+            font-size: 0.8em; color: #555; margin-top: 5px; text-align: right;
+        }
+        
+        .visualizer {
+            display: flex; height: 10px; width: 100%; background: #333;
+            margin-top: 20px; border-radius: 5px; overflow: hidden;
+        }
+        .bar-0 { background: #ff4b5c; height: 100%; width: 50%; transition: width 0.3s; }
+        .bar-1 { background: #00d4ff; height: 100%; width: 50%; transition: width 0.3s; }
+        
+        .error { color: #ff4b5c; font-size: 0.8em; height: 20px; margin-top: 10px;}
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Normalization Calc</h2>
+        <p style="color:#aaa; font-size: 0.9em; margin-bottom: 20px;">
+            Calculates the missing amplitude to ensure:<br>
+            |α|² + |β|² = 1
+        </p>
+
+        <div class="input-group">
+            <label>Amplitude for |0⟩ (Alpha)</label>
+            <input type="number" id="input0" step="0.01" min="0" max="1" placeholder="e.g. 0.707">
+            <div class="prob-display">Probability: <span id="prob0">0%</span></div>
+        </div>
+
+        <div class="input-group">
+            <label>Amplitude for |1⟩ (Beta)</label>
+            <input type="number" id="input1" step="0.01" min="0" max="1" placeholder="e.g. 0.707">
+            <div class="prob-display">Probability: <span id="prob1">0%</span></div>
+        </div>
+
+        <div class="visualizer">
+            <div class="bar-0" id="bar0"></div>
+            <div class="bar-1" id="bar1"></div>
+        </div>
+        
+        <div class="error" id="errorMsg"></div>
+    </div>
+
+<script>
+    const i0 = document.getElementById('input0');
+    const i1 = document.getElementById('input1');
+    const p0 = document.getElementById('prob0');
+    const p1 = document.getElementById('prob1');
+    const b0 = document.getElementById('bar0');
+    const b1 = document.getElementById('bar1');
+    const err = document.getElementById('errorMsg');
+
+    // Calculate Beta from Alpha
+    i0.addEventListener('input', () => {
+        let val = parseFloat(i0.value);
+        if (isNaN(val)) return;
+        
+        if (val > 1 || val < 0) {
+            setError("Amplitude must be between 0 and 1");
+            return;
+        }
+        setError("");
+
+        // Calculation: b = sqrt(1 - a^2)
+        let other = Math.sqrt(1 - (val * val));
+        
+        // Update UI
+        i1.value = other.toFixed(4);
+        updateStats(val, other);
+    });
+
+    // Calculate Alpha from Beta
+    i1.addEventListener('input', () => {
+        let val = parseFloat(i1.value);
+        if (isNaN(val)) return;
+
+        if (val > 1 || val < 0) {
+            setError("Amplitude must be between 0 and 1");
+            return;
+        }
+        setError("");
+
+        // Calculation: a = sqrt(1 - b^2)
+        let other = Math.sqrt(1 - (val * val));
+
+        // Update UI
+        i0.value = other.toFixed(4);
+        updateStats(other, val);
+    });
+
+    function updateStats(alpha, beta) {
+        let probZero = (alpha * alpha) * 100;
+        let probOne = (beta * beta) * 100;
+
+        p0.innerText = probZero.toFixed(1) + "%";
+        p1.innerText = probOne.toFixed(1) + "%";
+        
+        b0.style.width = probZero + "%";
+        b1.style.width = probOne + "%";
+    }
+
+    function setError(msg) {
+        err.innerText = msg;
+    }
+
+    // Init with 50/50 state (1/sqrt(2))
+    i0.value = 0.7071;
+    i1.value = 0.7071;
+    updateStats(0.7071, 0.7071);
+
+</script>
+</body>
+</html>

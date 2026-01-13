@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Search Simulator (Grover's Algorithm)</title>
+    <style>
+        :root {
+            --primary: #6200ea;
+            --secondary: #03dac6;
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --text: #ffffff;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        h1 { margin-bottom: 10px; }
+        p { color: #aaaaaa; max-width: 600px; text-align: center; }
+
+        .controls {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: var(--surface);
+            border-radius: 8px;
+            border: 1px solid #333;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        button:hover { background-color: #3700b3; }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+
+        select {
+            padding: 10px;
+            background-color: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 4px;
+        }
+
+        /* Qubit Grid Visualization */
+        .qubit-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            width: 100%;
+            max-width: 800px;
+            margin-top: 20px;
+        }
+
+        .state-card {
+            background-color: var(--surface);
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+
+        .state-label { font-size: 1.2em; font-weight: bold; margin-bottom: 10px; display: block; }
+        .bar-container {
+            height: 100px;
+            background-color: #333;
+            border-radius: 4px;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .probability-bar {
+            width: 100%;
+            background-color: var(--secondary);
+            transition: height 0.5s ease;
+        }
+
+        .amplitude-val {
+            margin-top: 5px;
+            font-size: 0.8em;
+            color: #888;
+        }
+
+        .phase-indicator {
+            font-size: 0.8em;
+            margin-top: 5px;
+            color: #ffcf44;
+        }
+
+        .log-area {
+            margin-top: 30px;
+            width: 100%;
+            max-width: 600px;
+            background: #000;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+            height: 150px;
+            overflow-y: auto;
+            border: 1px solid #333;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Quantum Search Simulator</h1>
+    <p>Simulating 3 Qubits (8 possible states). Use Grover's Algorithm to find the target state in fewer steps than a classical check.</p>
+
+    <div class="controls">
+        <label for="targetSelect">Select Target State:</label>
+        <select id="targetSelect">
+            <option value="0">|000> (0)</option>
+            <option value="1">|001> (1)</option>
+            <option value="2">|010> (2)</option>
+            <option value="3">|011> (3)</option>
+            <option value="4">|100> (4)</option>
+            <option value="5">|101> (5)</option>
+            <option value="6">|110> (6)</option>
+            <option value="7">|111> (7)</option>
+        </select>
+        <button onclick="runSimulation()">Run Quantum Search</button>
+        <button onclick="resetSystem()" style="background-color: #333;">Reset</button>
+    </div>
+
+    <div class="qubit-grid" id="grid">
+        </div>
+
+    <div class="log-area" id="log">
+        <div>> System Ready...</div>
+    </div>
+
+    <script>
+        // --- 1. CONFIGURATION ---
+        const numQubits = 3;
+        const numStates = Math.pow(2, numQubits); // 8 states
+        let amplitudes = []; // Represents the quantum state vector
+        let targetState = 0;
+
+        // --- 2. INITIALIZATION ---
+        function init() {
+            const grid = document.getElementById('grid');
+            grid.innerHTML = '';
+            
+            // Initialize equal superposition: 1/sqrt(N)
+            const initialAmp = 1 / Math.sqrt(numStates);
+            amplitudes = new Array(numStates).fill(initialAmp);
+
+            // Create UI Elements
+            for(let i=0; i<numStates; i++) {
+                // Convert integer to binary string (e.g., 3 -> "011")
+                const binaryString = i.toString(2).padStart(numQubits, '0');
+                
+                const card = document.createElement('div');
+                card.className = 'state-card';
+                card.id = `card-${i}`;
+                
+                card.innerHTML = `
+                    <span class="state-label">|${binaryString}></span>
+                    <div class="bar-container">
+                        <div class="probability-bar" id="bar-${i}" style="height: 0%"></div>
+                    </div>
+                    <div class="amplitude-val" id="amp-${i}">Amp: 0.00</div>
+                    <div class="phase-indicator" id="phase-${i}"></div>
+                `;
+                grid.appendChild(card);
+            }
+            updateUI("System Initialized in Superposition");
+        }
+
+        // --- 3. QUANTUM OPERATIONS ---
+
+        // The Oracle: Flips the phase (sign) of the target state
+        async function oracle(target) {
+            log(`> Applying Oracle for |${target.toString(2).padStart(3,'0')}>...`);
+            amplitudes[target] = -amplitudes[target]; 
+            updateUI();
+            await pause(1000);
+        }
+
+        // The Diffuser: Inversion about the mean
+        // This amplifies the probability of the marked state
+        async function diffuser() {
+            log("> Applying Diffusion Operator (Amplitude Amplification)...");
+            
+            // Calculate mean amplitude
+            const mean = amplitudes.reduce((a, b) => a + b, 0) / numStates;
+
+            // Reflect every amplitude around the mean: 2*mean - current
+            for(let i=0; i<numStates; i++) {
+                amplitudes[i] = (2 * mean) - amplitudes[i];
+            }
+            updateUI();
+            await pause(1000);
+        }
+
+        // --- 4. MAIN EXECUTION ---
+        async function runSimulation() {
+            resetSystem();
+            const select = document.getElementById('targetSelect');
+            targetState = parseInt(select.value);
+
+            // Disable button during run
+            const btn = document.querySelector('button');
+            btn.disabled = true;
+
+            log("--- STARTING GROVER'S ALGORITHM ---");
+            await pause(800);
+
+            // Grover's algorithm usually requires roughly sqrt(N) iterations.
+            // For N=8, 2 iterations is optimal.
+            const optimalIterations = 2; 
+
+            for(let i = 1; i <= optimalIterations; i++) {
+                log(`--- Iteration ${i} of ${optimalIterations} ---`);
+                
+                // Step A: Oracle
+                await oracle(targetState);
+                
+                // Step B: Diffusion
+                await diffuser();
+            }
+
+            // Measurement
+            log("> Measuring system...");
+            await pause(500);
+            measure();
+            
+            btn.disabled = false;
+        }
+
+        function measure() {
+            // Find the state with highest probability
+            let maxProb = 0;
+            let measuredState = -1;
+
+            for(let i=0; i<numStates; i++) {
+                const prob = amplitudes[i] * amplitudes[i];
+                if(prob > maxProb) {
+                    maxProb = prob;
+                    measuredState = i;
+                }
+            }
+            
+            const binary = measuredState.toString(2).padStart(3,'0');
+            const probabilityPercent = (maxProb * 100).toFixed(1);
+            
+            log(`> RESULT: Collapsed to state |${binary}> with ~${probabilityPercent}% probability.`);
+            
+            // Highlight winner
+            document.getElementById(`card-${measuredState}`).style.borderColor = "#03dac6";
+            document.getElementById(`card-${measuredState}`).style.boxShadow = "0 0 15px rgba(3, 218, 198, 0.5)";
+        }
+
+        // --- 5. HELPER FUNCTIONS ---
+
+        function updateUI(message) {
+            if(message) log(`> ${message}`);
+
+            for(let i=0; i<numStates; i++) {
+                const amp = amplitudes[i];
+                const prob = amp * amp; // Probability is amplitude squared
+                const heightPercent = prob * 100 * 3; // scale up for visibility (max possible is 100%)
+                
+                // Update Bar Height
+                const bar = document.getElementById(`bar-${i}`);
+                bar.style.height = `${Math.min(heightPercent, 100)}%`; // Cap at 100% css height
+
+                // Update Text
+                document.getElementById(`amp-${i}`).innerText = `Prob: ${(prob*100).toFixed(1)}%`;
+                
+                // Phase indicator (Negative amplitude?)
+                const phaseEl = document.getElementById(`phase-${i}`);
+                if (amp < 0) {
+                    phaseEl.innerText = "Phase: -180°";
+                    bar.style.backgroundColor = "#ffcf44"; // Change color for negative phase
+                } else {
+                    phaseEl.innerText = "";
+                    bar.style.backgroundColor = "#03dac6";
+                }
+            }
+        }
+
+        function resetSystem() {
+            init();
+            const cards = document.querySelectorAll('.state-card');
+            cards.forEach(c => {
+                c.style.borderColor = "#333";
+                c.style.boxShadow = "none";
+            });
+        }
+
+        function log(msg) {
+            const logEl = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.innerText = msg;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function pause(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // Run on load
+        init();
+
+    </script>
+</body>
+</html>

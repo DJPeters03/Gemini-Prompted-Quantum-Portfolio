@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantum Bloch Sphere Calculator</title>
+    <style>
+        body { font-family: sans-serif; background: #111; color: #fff; display: flex; flex-direction: column; align-items: center; }
+        h1 { margin-bottom: 5px; }
+        .container { display: flex; gap: 20px; align-items: center; justify-content: center; flex-wrap: wrap;}
+        canvas { background: #000; border: 1px solid #333; border-radius: 50%; box-shadow: 0 0 20px rgba(0, 255, 255, 0.2); cursor: grab; }
+        .controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; max-width: 300px; }
+        button { padding: 10px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; background: #333; color: white; transition: 0.2s; }
+        button:hover { background: #555; }
+        button.reset { background: #d9534f; grid-column: span 2; }
+        .readout { margin-top: 20px; font-family: monospace; background: #222; padding: 10px; border-radius: 5px; min-width: 300px;}
+        .axis-label { color: #888; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <h1>Single Qubit Simulator</h1>
+    <p>Click and drag to rotate the view</p>
+
+    <div class="container">
+        <canvas id="blochCanvas" width="400" height="400"></canvas>
+        
+        <div class="controls">
+            <button onclick="applyGate('X')">X (NOT)</button>
+            <button onclick="applyGate('Y')">Y</button>
+            <button onclick="applyGate('Z')">Z (Phase)</button>
+            <button onclick="applyGate('H')">H (Hadamard)</button>
+            <button onclick="applyGate('S')">S (Phase 90°)</button>
+            <button onclick="applyGate('T')">T (Phase 45°)</button>
+            <button class="reset" onclick="resetState()">Reset to |0⟩</button>
+        </div>
+    </div>
+
+    <div class="readout" id="readout">
+        Probability |0⟩: 100%<br>
+        Probability |1⟩: 0%<br>
+        Bloch Vector (x,y,z): (0.00, 0.00, 1.00)
+    </div>
+
+<script>
+/**
+ * MATH ENGINE
+ * Handling Complex Numbers and Matrix Multiplication
+ */
+class Complex {
+    constructor(re, im) { this.re = re; this.im = im; }
+    add(c) { return new Complex(this.re + c.re, this.im + c.im); }
+    mul(c) { return new Complex(this.re * c.re - this.im * c.im, this.re * c.im + this.im * c.re); }
+    magSq() { return this.re * this.re + this.im * this.im; }
+}
+
+// Global State: Alpha (|0>) and Beta (|1>)
+let state = { alpha: new Complex(1, 0), beta: new Complex(0, 0) };
+
+// Gate Definitions (2x2 Matrices)
+const GATES = {
+    'X': [[new Complex(0,0), new Complex(1,0)], [new Complex(1,0), new Complex(0,0)]],
+    'Y': [[new Complex(0,0), new Complex(0,-1)], [new Complex(0,1), new Complex(0,0)]],
+    'Z': [[new Complex(1,0), new Complex(0,0)], [new Complex(0,0), new Complex(-1,0)]],
+    'H': [[new Complex(1/Math.sqrt(2),0), new Complex(1/Math.sqrt(2),0)], [new Complex(1/Math.sqrt(2),0), new Complex(-1/Math.sqrt(2),0)]],
+    'S': [[new Complex(1,0), new Complex(0,0)], [new Complex(0,0), new Complex(0,1)]],
+    'T': [[new Complex(1,0), new Complex(0,0)], [new Complex(0,0), new Complex(Math.cos(Math.PI/4), Math.sin(Math.PI/4))]]
+};
+
+function applyGate(name) {
+    const m = GATES[name];
+    const newAlpha = m[0][0].mul(state.alpha).add(m[0][1].mul(state.beta));
+    const newBeta  = m[1][0].mul(state.alpha).add(m[1][1].mul(state.beta));
+    state.alpha = newAlpha;
+    state.beta = newBeta;
+    draw();
+    updateReadout();
+}
+
+function resetState() {
+    state.alpha = new Complex(1, 0);
+    state.beta = new Complex(0, 0);
+    draw();
+    updateReadout();
+}
+
+/**
+ * VISUALIZATION ENGINE
+ * 3D Projection Logic
+ */
+const canvas = document.getElementById('blochCanvas');
+const ctx = canvas.getContext('2d');
+let viewAngle = { x: 0.5, y: 0.5 }; // Camera rotation
+let isDragging = false;
+let lastMouse = { x: 0, y: 0 };
+
+// Helper to project 3D point (x,y,z) to 2D canvas
+function project(x, y, z) {
+    // Rotate around Y axis
+    let x1 = x * Math.cos(viewAngle.y) - z * Math.sin(viewAngle.y);
+    let z1 = x * Math.sin(viewAngle.y) + z * Math.cos(viewAngle.y);
+    // Rotate around X axis
+    let y2 = y * Math.cos(viewAngle.x) - z1 * Math.sin(viewAngle.x);
+    // Scale and center
+    const scale = 120; 
+    return { x: x1 * scale + 200, y: -y2 * scale + 200 }; // Invert Y for canvas
+}
+
+function getBlochVector() {
+    // Convert State Vector to Bloch Vector (x, y, z)
+    // x = 2Re(α*β), y = 2Im(α*β), z = |α|^2 - |β|^2
+    const a = state.alpha; 
+    const b = state.beta;
+    
+    // Conjugate of alpha
+    const a_conj = new Complex(a.re, -a.im);
+    
+    // a_conj * b
+    const cross = a_conj.mul(b);
+    
+    const x = 2 * cross.re;
+    const y = 2 * cross.im;
+    const z = a.magSq() - b.magSq();
+    return { x, y, z };
+}
+
+function draw() {
+    ctx.clearRect(0, 0, 400, 400);
+    
+    // Draw Sphere Wireframe (Longitude/Latitude)
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    
+    // Simple wireframe loops
+    for(let i=0; i<Math.PI; i+=0.3) {
+        ctx.beginPath();
+        for(let j=0; j<2*Math.PI; j+=0.1) {
+            let p = project(Math.sin(j)*Math.cos(i), Math.cos(j), Math.sin(j)*Math.sin(i)); // Rough approximate rings
+            if(j==0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+    }
+    
+    // Draw Axes
+    ctx.lineWidth = 2;
+    const center = project(0,0,0);
+    
+    // Z Axis
+    ctx.strokeStyle = '#00ff00'; ctx.beginPath(); ctx.moveTo(center.x, center.y); 
+    let pZ = project(0,0,1.2); ctx.lineTo(pZ.x, pZ.y); ctx.stroke();
+    ctx.fillStyle='#00ff00'; ctx.fillText("|0⟩", pZ.x, pZ.y);
+    
+    // X Axis
+    ctx.strokeStyle = '#0000ff'; ctx.beginPath(); ctx.moveTo(center.x, center.y); 
+    let pX = project(1.2,0,0); ctx.lineTo(pX.x, pX.y); ctx.stroke();
+    
+    // Y Axis
+    ctx.strokeStyle = '#ff00ff'; ctx.beginPath(); ctx.moveTo(center.x, center.y); 
+    let pY = project(0,1.2,0); ctx.lineTo(pY.x, pY.y); ctx.stroke();
+
+    // Draw State Vector
+    const v = getBlochVector();
+    const end = project(v.x, v.y, v.z);
+    
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(center.x, center.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    
+    // Draw "Ball" at tip
+    ctx.fillStyle = 'red';
+    ctx.beginPath();
+    ctx.arc(end.x, end.y, 5, 0, 2*Math.PI);
+    ctx.fill();
+}
+
+function updateReadout() {
+    const prob0 = (state.alpha.magSq() * 100).toFixed(1);
+    const prob1 = (state.beta.magSq() * 100).toFixed(1);
+    const v = getBlochVector();
+    
+    document.getElementById('readout').innerHTML = 
+        `Probability |0⟩: ${prob0}%<br>` +
+        `Probability |1⟩: ${prob1}%<br>` +
+        `Bloch Vector (x,y,z): (${v.x.toFixed(2)}, ${v.y.toFixed(2)}, ${v.z.toFixed(2)})`;
+}
+
+// Mouse Controls
+canvas.addEventListener('mousedown', e => { isDragging=true; lastMouse = {x:e.offsetX, y:e.offsetY}; });
+window.addEventListener('mouseup', () => isDragging=false);
+canvas.addEventListener('mousemove', e => {
+    if(!isDragging) return;
+    let dx = e.offsetX - lastMouse.x;
+    let dy = e.offsetY - lastMouse.y;
+    viewAngle.y += dx * 0.01;
+    viewAngle.x += dy * 0.01;
+    lastMouse = {x:e.offsetX, y:e.offsetY};
+    draw();
+});
+
+// Init
+draw();
+updateReadout();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Continuous Qudit Survival</title>
+    <style>
+        :root {
+            --bg: #050505;
+            --panel: #111;
+            --accent: #00ffcc;
+            --danger: #ff0055;
+            --text: #aaa;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        h1 { margin: 0 0 10px 0; font-size: 1.5rem; color: var(--accent); }
+        
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(0, 255, 204, 0.1);
+            border-radius: 50%;
+        }
+
+        canvas {
+            background: radial-gradient(circle, #1a1a1a 0%, #000000 70%);
+            border-radius: 50%;
+            border: 2px solid #333;
+        }
+
+        #ui-panel {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            text-align: center;
+            width: 400px;
+        }
+
+        .stat-box {
+            background: var(--panel);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+        .stat-val {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: white;
+            display: block;
+        }
+        .stat-label { font-size: 0.8rem; }
+
+        #speed-control {
+            margin-top: 15px;
+            width: 300px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>Continuous Q-Learning</h1>
+
+    <div id="game-container">
+        <canvas id="simCanvas" width="400" height="400"></canvas>
+    </div>
+
+    <div id="ui-panel">
+        <div class="stat-box">
+            <span class="stat-val" id="genDisplay">1</span>
+            <span class="stat-label">Generation</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-val" id="epsilonDisplay">100%</span>
+            <span class="stat-label">Exploration (Randomness)</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-val" id="scoreDisplay">0</span>
+            <span class="stat-label">Ticks Alive</span>
+        </div>
+    </div>
+
+    <input type="range" id="speed-control" min="1" max="15" value="5">
+    <div style="font-size: 0.8rem; color: #666;">Bar Speed Slider</div>
+
+    <script>
+        /**
+         * CONFIGURATION
+         */
+        const CANVAS_SIZE = 400;
+        const CENTER = CANVAS_SIZE / 2;
+        const RADIUS = 140;
+        const STATES = 6; 
+        
+        // Q-Learning Hyperparameters
+        let epsilon = 1.0;       
+        const EPSILON_DECAY = 0.99; 
+        const MIN_EPSILON = 0.01;    
+        const ALPHA = 0.1;       
+        const GAMMA = 0.9;       
+        
+        // Game Variables
+        let canvas, ctx;
+        let generation = 1;
+        let score = 0;
+        let barAngle = 0;
+        let barSpeed = 0.05; 
+        
+        // The Agent
+        let quditState = 0; 
+        let isDead = false;
+        let deathFlashTimer = 0;
+
+        // Q-Table initialization
+        let Q_Table = Array(STATES).fill().map(() => Array(STATES).fill(0));
+
+        // State Tracking
+        let currentBarSector = 0;
+        let lastAction = 0; 
+
+        function init() {
+            canvas = document.getElementById('simCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // Speed slider listener
+            document.getElementById('speed-control').addEventListener('input', (e) => {
+                barSpeed = parseInt(e.target.value) / 100;
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function chooseAction(barSec) {
+            // Epsilon Greedy Strategy
+            if (Math.random() < epsilon) {
+                return Math.floor(Math.random() * STATES);
+            }
+            
+            // Choose best known move
+            let bestAction = 0;
+            let maxVal = -Infinity;
+            
+            // Small random tie-breaker to prevent getting stuck in equal-value loops
+            for (let i = 0; i < STATES; i++) {
+                // Add tiny jitter to values so if all are 0, it picks randomly rather than always 0
+                let val = Q_Table[barSec][i] + (Math.random() * 0.00001);
+                if (val > maxVal) {
+                    maxVal = val;
+                    bestAction = i;
+                }
+            }
+            return bestAction;
+        }
+
+        function updateQTable(state, action, reward, nextState) {
+            let maxNextQ = -Infinity;
+            for (let i = 0; i < STATES; i++) {
+                if (Q_Table[nextState][i] > maxNextQ) {
+                    maxNextQ = Q_Table[nextState][i];
+                }
+            }
+
+            let currentQ = Q_Table[state][action];
+            Q_Table[state][action] = currentQ + ALPHA * (reward + GAMMA * maxNextQ - currentQ);
+        }
+
+        function triggerDeath() {
+            // 1. Punish the exact move that got us killed
+            updateQTable(currentBarSector, lastAction, -100, currentBarSector);
+            
+            // 2. Visuals
+            deathFlashTimer = 5; // Flash red for 5 frames
+            
+            // 3. Reset Agent Stats (But NOT the bar angle)
+            generation++;
+            score = 0;
+            
+            // 4. Decay Epsilon
+            if (epsilon > MIN_EPSILON) epsilon *= EPSILON_DECAY;
+            
+            // 5. Respawn: Pick a random spot to start so we don't just spawn in death
+            quditState = Math.floor(Math.random() * STATES);
+            
+            updateUI();
+        }
+
+        function gameLoop() {
+            // 1. Move Bar (Continuous)
+            barAngle += barSpeed;
+            if (barAngle >= Math.PI * 2) barAngle -= Math.PI * 2;
+            
+            // 2. Determine State
+            let prevBarSector = currentBarSector;
+            // Calculate which slice the bar is currently sweeping through
+            // We shift angle slightly to align visual bar with calculation
+            currentBarSector = Math.floor(barAngle / (Math.PI * 2 / STATES)); 
+            if(currentBarSector >= STATES) currentBarSector = 0;
+
+            // 3. Agent Logic
+            // If we survived the last tick, give a small reward
+            // We use a small reward to encourage simply staying alive
+            if (score > 0) {
+                 updateQTable(prevBarSector, lastAction, 1, currentBarSector);
+            }
+
+            // Decide next move
+            lastAction = quditState; 
+            let nextAction = chooseAction(currentBarSector);
+            quditState = nextAction; 
+
+            // 4. Collision Check
+            // If the bar is in the same sector as the qudit, it's a hit.
+            if (currentBarSector === quditState) {
+                triggerDeath();
+            } else {
+                score++;
+            }
+            
+            // 5. Draw
+            draw();
+            
+            if(deathFlashTimer > 0) deathFlashTimer--;
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateUI() {
+            document.getElementById('genDisplay').innerText = generation;
+            document.getElementById('epsilonDisplay').innerText = (epsilon * 100).toFixed(1) + "%";
+            document.getElementById('scoreDisplay').innerText = score;
+        }
+
+        function draw() {
+            // Background
+            if(deathFlashTimer > 0) {
+                ctx.fillStyle = "#550000"; // Red Flash
+            } else {
+                ctx.fillStyle = "#000000";
+            }
+            ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+            // Draw 6 Positions
+            for (let i = 0; i < STATES; i++) {
+                let angle = (i * (Math.PI * 2) / STATES) + (Math.PI / STATES);
+                let x = CENTER + Math.cos(angle) * RADIUS;
+                let y = CENTER + Math.sin(angle) * RADIUS;
+
+                // Sector base
+                ctx.beginPath();
+                ctx.arc(x, y, 20, 0, Math.PI * 2);
+                ctx.fillStyle = "#1a1a1a";
+                ctx.fill();
+                ctx.strokeStyle = "#333";
+                ctx.stroke();
+                
+                // Highlight sector if bar is inside it
+                if(currentBarSector === i) {
+                     ctx.strokeStyle = "#ff0055";
+                     ctx.stroke();
+                }
+
+                // Draw Qudit
+                if (quditState === i) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, 15, 0, Math.PI * 2);
+                    ctx.fillStyle = "#00ffcc";
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = "#00ffcc";
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                } 
+            }
+
+            // Draw Spinning Bar
+            let barX = CENTER + Math.cos(barAngle) * (RADIUS + 30);
+            let barY = CENTER + Math.sin(barAngle) * (RADIUS + 30);
+
+            ctx.beginPath();
+            ctx.moveTo(CENTER, CENTER);
+            ctx.lineTo(barX, barY);
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = "#ff0055";
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#ff0055";
+            ctx.stroke();
+            
+            // Center Hub
+            ctx.beginPath();
+            ctx.arc(CENTER, CENTER, 8, 0, Math.PI * 2);
+            ctx.fillStyle = "#ff0055";
+            ctx.fill();
+            
+            // Draw Brain Visualization (What the AI is thinking)
+            // We draw lines from center to where the AI WANTS to go for the CURRENT bar position
+            // Only draw if we aren't randomizing
+            if(epsilon < 0.5) {
+                let bestMove = -1;
+                let maxQ = -Infinity;
+                for(let i=0; i<STATES; i++) {
+                    if(Q_Table[currentBarSector][i] > maxQ) {
+                        maxQ = Q_Table[currentBarSector][i];
+                        bestMove = i;
+                    }
+                }
+                
+                if(maxQ > 0) {
+                     let angle = (bestMove * (Math.PI * 2) / STATES) + (Math.PI / STATES);
+                     let tx = CENTER + Math.cos(angle) * (RADIUS - 40);
+                     let ty = CENTER + Math.sin(angle) * (RADIUS - 40);
+                     
+                     ctx.beginPath();
+                     ctx.moveTo(CENTER, CENTER);
+                     ctx.lineTo(tx, ty);
+                     ctx.strokeStyle = "rgba(0, 255, 204, 0.4)";
+                     ctx.lineWidth = 2;
+                     ctx.stroke();
+                }
+            }
+        }
+
+        init();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schrödinger Wave Packet Animation</title>
+    
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a; /* Dark background for 'science' feel */
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        h2 {
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .equation {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 8px;
+        }
+
+        canvas {
+            background-color: #000000;
+            border: 1px solid #333;
+            border-radius: 4px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.1);
+        }
+
+        .controls {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Quantum Wave Packet Simulation</h2>
+
+    <div class="equation">
+        $$ \Psi(x,t) = A e^{- \frac{(x-vt)^2}{2\sigma^2}} e^{i(kx-\omega t)} $$
+    </div>
+
+    <canvas id="quantumCanvas" width="800" height="400"></canvas>
+
+    <div class="controls">
+        <p>Blue: Real part of Wave Function &nbsp;|&nbsp; Red: Probability Density (Location)</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('quantumCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Animation Parameters
+        let time = 0;
+        const width = canvas.width;
+        const height = canvas.height;
+        const centerY = height / 2;
+
+        // Physics Constants (Simplified for visualization)
+        const k = 15;        // Wavenumber (how many ripples)
+        const omega = 0.2;   // Angular frequency (speed of oscillation)
+        const v = 2;         // Group velocity (speed of the packet moving)
+        const sigma = 40;    // Width of the packet
+        const scaleAmp = 100; // Visual height of the wave
+
+        function draw() {
+            // 1. Clear the screen
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'; // Creates a slight trail effect
+            ctx.fillRect(0, 0, width, height);
+
+            // 2. Calculate current packet center position
+            // The modulo (%) operator makes it loop back to the start
+            let packetX = (v * time) % (width + 200) - 100; 
+
+            ctx.beginPath();
+            ctx.lineWidth = 2;
+            
+            // --- DRAW THE PROBABILITY ENVELOPE (RED) ---
+            // This is the "Ghost" shape showing where the particle likely is
+            ctx.strokeStyle = '#ff3333';
+            ctx.beginPath();
+            for (let x = 0; x < width; x++) {
+                // Gaussian function: e^(-(x-center)^2 / 2sigma^2)
+                const envelope = Math.exp(-Math.pow(x - packetX, 2) / (2 * sigma * sigma));
+                const y = centerY - (envelope * scaleAmp);
+                
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // --- DRAW THE REAL WAVE FUNCTION (CYAN) ---
+            // This is the oscillating part inside the envelope
+            ctx.strokeStyle = '#00ffff';
+            ctx.beginPath();
+            for (let x = 0; x < width; x++) {
+                // Calculate Envelope again
+                const envelope = Math.exp(-Math.pow(x - packetX, 2) / (2 * sigma * sigma));
+                
+                // Calculate Oscillation: cos(kx - omega*t)
+                // Note: We adjust x relative to packetX to keep ripples moving nicely
+                const oscillation = Math.cos(k * (x - packetX) * 0.05 - omega * time);
+                
+                // Combine them
+                const y = centerY - (envelope * oscillation * scaleAmp);
+
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // 3. Increment Time
+            time += 1;
+            
+            // 4. Request next frame
+            requestAnimationFrame(draw);
+        }
+
+        // Start the animation
+        draw();
+
+    </script>
+</body>
+</html>

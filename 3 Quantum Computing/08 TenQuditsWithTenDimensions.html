@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>10 Qudits (d=10) Environment</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #02020a; /* Deep space dark */
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            background: rgba(0,0,0,0.5);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+        h1 { margin: 0; font-weight: 300; color: #00d2ff; }
+        p { margin: 5px 0 0 0; font-size: 14px; color: #aaa; max-width: 300px;}
+        .legend-strip {
+            margin-top: 10px;
+            height: 10px;
+            width: 100%;
+            background: linear-gradient(to right, red, yellow, green, cyan, blue, magenta, red);
+        }
+        .legend-label { font-size: 10px; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <canvas id="simCanvas"></canvas>
+    
+    <div class="ui-overlay">
+        <h1>10 x 10D Qudit Gas</h1>
+        <p>10 independent qudits moving spatially. Each orb visualizes its internal 10-dimensional superposition state.</p>
+        <div style="margin-top: 15px; font-size: 12px;">
+            <strong>Visual Guide:</strong><br>
+            Ring segments = The 10 Dimensions<br>
+            Segment Length = Probability magnitude<br>
+            Segment Color = Quantum Phase
+        </div>
+        <div class="legend-strip"></div>
+        <div class="legend-label">Phase (0 to 2π)</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        const NUM_QUDITS = 10;
+        const D = 10; // Dimensions per qudit
+        const QUDIT_RADIUS = 35;
+        let qudits = [];
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Helper for complex numbers
+        function getMagnitudeSq(c) { return c.re * c.re + c.im * c.im; }
+        function getPhase(c) { return Math.atan2(c.im, c.re); }
+
+        class Qudit {
+            constructor(id) {
+                this.id = id;
+                // Spatial properties
+                this.x = Math.random() * (width - QUDIT_RADIUS*2) + QUDIT_RADIUS;
+                this.y = Math.random() * (height - QUDIT_RADIUS*2) + QUDIT_RADIUS;
+                this.vx = (Math.random() - 0.5) * 1.5;
+                this.vy = (Math.random() - 0.5) * 1.5;
+
+                // Quantum State: Array of D complex numbers {re, im}
+                this.state = [];
+                this.initializeState();
+            }
+
+            initializeState() {
+                let totalMagSq = 0;
+                // Fill with random complex numbers
+                for (let i = 0; i < D; i++) {
+                    let re = Math.random() - 0.5;
+                    let im = Math.random() - 0.5;
+                    this.state.push({ re, im });
+                    totalMagSq += re*re + im*im;
+                }
+                // Normalize
+                this.normalize(totalMagSq);
+            }
+
+            normalize(totalMagSq) {
+                if (totalMagSq === 0) totalMagSq = 1;
+                const normFactor = 1 / Math.sqrt(totalMagSq);
+                for (let i = 0; i < D; i++) {
+                    this.state[i].re *= normFactor;
+                    this.state[i].im *= normFactor;
+                }
+            }
+
+            // Simulate Unitary Evolution (random smooth drifting)
+            evolve() {
+                let totalMagSq = 0;
+                for (let i = 0; i < D; i++) {
+                    // 1. Apply slight random phase rotation
+                    let phaseShift = (Math.random() - 0.5) * 0.05;
+                    let cos = Math.cos(phaseShift);
+                    let sin = Math.sin(phaseShift);
+                    let re = this.state[i].re;
+                    let im = this.state[i].im;
+                    // Complex multiply: (re + i*im) * (cos + i*sin)
+                    this.state[i].re = re * cos - im * sin;
+                    this.state[i].im = re * sin + im * cos;
+
+                    // 2. Apply slight magnitude jitter (diffusion between dimensions)
+                    this.state[i].re += (Math.random() - 0.5) * 0.01;
+                    this.state[i].im += (Math.random() - 0.5) * 0.01;
+
+                    totalMagSq += this.state[i].re**2 + this.state[i].im**2;
+                }
+                // Renormalize to maintain physical validity
+                this.normalize(totalMagSq);
+            }
+
+            move() {
+                this.x += this.vx;
+                this.y += this.vy;
+                // Bounce off walls
+                if (this.x < QUDIT_RADIUS || this.x > width - QUDIT_RADIUS) this.vx *= -1;
+                if (this.y < QUDIT_RADIUS || this.y > height - QUDIT_RADIUS) this.vy *= -1;
+            }
+
+            draw() {
+                const segAngle = (Math.PI * 2) / D;
+                const innerR = QUDIT_RADIUS * 0.4;
+                const maxOuterR = QUDIT_RADIUS;
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // Draw central core
+                ctx.beginPath();
+                ctx.arc(0,0, innerR - 2, 0, Math.PI*2);
+                ctx.fillStyle = "#111";
+                ctx.fill();
+                ctx.strokeStyle = "#333";
+                ctx.stroke();
+                
+                // Label dimension 0 for orientation
+                ctx.fillStyle = "#555";
+                ctx.font = "10px monospace";
+                ctx.fillText("|0⟩", 0, -innerR - 5);
+
+                // Draw 10 Dimensional Segments
+                for (let i = 0; i < D; i++) {
+                    let magSq = getMagnitudeSq(this.state[i]); // Probability
+                    let phase = getPhase(this.state[i]);       // Color
+
+                    // Map phase (-PI to PI) to Hue (0 to 360)
+                    let hue = ((phase + Math.PI) / (2 * Math.PI)) * 360;
+                    // Map magnitude to length of segment. 
+                    // Max magnitude is 1. We boost small magnitudes for visibility.
+                    let drawLength = innerR + (maxOuterR - innerR) * Math.pow(magSq, 0.3);
+                    
+                    let startA = i * segAngle - Math.PI/2; // Start at top
+                    let endA = startA + segAngle;
+
+                    ctx.beginPath();
+                    ctx.moveTo(0,0); // Draw from center for clean segments
+                    ctx.arc(0, 0, drawLength, startA, endA);
+                    ctx.closePath();
+                    
+                    // Color based on phase, brightness/opacity based on probability
+                    ctx.fillStyle = `hsla(${hue}, 100%, 60%, 0.8)`;
+                    // Add glow
+                    ctx.shadowColor = `hsla(${hue}, 100%, 60%, 1.0)`;
+                    ctx.shadowBlur = 10 * magSq; 
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    // Draw separators
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(startA)*innerR, Math.sin(startA)*innerR);
+                    ctx.lineTo(Math.cos(startA)*maxOuterR, Math.sin(startA)*maxOuterR);
+                    ctx.strokeStyle = "rgba(0,0,0,0.5)";
+                    ctx.stroke();
+                }
+
+                // Draw ID slightly visible
+                ctx.fillStyle = "rgba(255,255,255,0.3)";
+                ctx.font = "12px sans-serif";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("Q"+this.id, 0, 0);
+
+                ctx.restore();
+            }
+        }
+
+        function init() {
+            for (let i = 0; i < NUM_QUDITS; i++) {
+                qudits.push(new Qudit(i));
+            }
+            animate();
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+
+            // Optional: Draw faint connecting lines if close (spatial interaction hint)
+            ctx.lineWidth = 1;
+            for(let i=0; i<NUM_QUDITS; i++) {
+                for(let j=i+1; j<NUM_QUDITS; j++) {
+                    let dx = qudits[i].x - qudits[j].x;
+                    let dy = qudits[i].y - qudits[j].y;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    if(dist < 150) {
+                         ctx.strokeStyle = `rgba(50, 100, 255, ${1 - dist/150})`;
+                         ctx.beginPath();
+                         ctx.moveTo(qudits[i].x, qudits[i].y);
+                         ctx.lineTo(qudits[j].x, qudits[j].y);
+                         ctx.stroke();
+                    }
+                }
+            }
+
+            qudits.forEach(q => {
+                q.move();
+                q.evolve();
+                q.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        init();
+
+    </script>
+</body>
+</html>

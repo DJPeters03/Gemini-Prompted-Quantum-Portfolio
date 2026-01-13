@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step 4: Bohr & De Broglie</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --text-color: #e2e8f0;
+            --accent: #38bdf8;
+            --error: #f43f5e;
+            --success: #22c55e;
+            --panel: #1e293b;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 { color: var(--accent); text-align: center;}
+        p { max-width: 600px; text-align: center; color: #94a3b8; }
+
+        .main-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 20px;
+        }
+
+        .visual-panel {
+            background: var(--panel);
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        canvas {
+            background: radial-gradient(circle, #1e293b 0%, #0f172a 70%);
+            border-radius: 50%;
+            border: 2px solid #334155;
+            cursor: crosshair;
+        }
+
+        .controls {
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 10px;
+        }
+
+        .status-box {
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .status-stable { background: rgba(34, 197, 94, 0.2); border: 1px solid var(--success); color: var(--success); }
+        .status-unstable { background: rgba(244, 63, 94, 0.2); border: 1px solid var(--error); color: var(--error); }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label { font-size: 0.9em; font-weight: 600; }
+        
+        .equation {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            color: #fbbf24;
+            text-align: center;
+        }
+        
+        /* Tooltip explaining the "wrapping" */
+        .info-card {
+            margin-top: 20px;
+            background: rgba(255,255,255,0.05);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            line-height: 1.5;
+            border-left: 3px solid var(--accent);
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>Step 4: The De Broglie Atom</h1>
+    <p>Why do electron orbits exist? Because the electron is a wave that must close on itself.</p>
+
+    <div class="main-container">
+        
+        <div class="visual-panel">
+            <canvas id="atomCanvas" width="400" height="400"></canvas>
+        </div>
+
+        <div class="visual-panel controls">
+            <div id="statusBox" class="status-box status-stable">
+                Orbit Stable (n = 3)
+            </div>
+
+            <div class="slider-group">
+                <label>Orbit Radius (r)</label>
+                <input type="range" id="radiusSlider" min="50" max="180" value="100">
+            </div>
+
+            <div class="equation">
+                Circumference = <span id="circVal">0</span><br>
+                Wavelengths = <span id="waveVal">0</span>
+            </div>
+
+            <div class="info-card">
+                <strong>The Rule of Quantum Action:</strong><br>
+                An electron is a standing wave. If the circumference ($2\pi r$) is not an exact integer number of wavelengths ($n \lambda$), the wave cancels itself out and the atom collapses.
+                <br><br>
+                <em>Try to find the "Sweet Spots" where the wave connects perfectly!</em>
+            </div>
+            
+            <button onclick="snapToStable()" style="padding:10px; cursor:pointer; background:var(--accent); border:none; border-radius:6px; font-weight:bold;">Auto-Snap to Nearest Orbit</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('atomCanvas');
+        const ctx = canvas.getContext('2d');
+        const slider = document.getElementById('radiusSlider');
+        const statusBox = document.getElementById('statusBox');
+        const circVal = document.getElementById('circVal');
+        const waveVal = document.getElementById('waveVal');
+
+        let time = 0;
+        
+        // Physics constants for simulation
+        // We fix wavelength (lambda) to a constant to make visual understanding easier.
+        // In reality, lambda changes with momentum, but fixing it helps visualize the "geometric fitting" concept.
+        const LAMBDA = 60; 
+
+        function draw() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            const r = parseInt(slider.value);
+            const circumference = 2 * Math.PI * r;
+            const numWavelengths = circumference / LAMBDA; // This is 'n'
+            
+            // Check stability (is n close to an integer?)
+            const n = Math.round(numWavelengths);
+            const deviation = Math.abs(numWavelengths - n);
+            const isStable = deviation < 0.1; // Tolerance for "locking in"
+
+            // Clear Screen
+            ctx.clearRect(0, 0, width, height);
+
+            // 1. Draw Nucleus
+            ctx.beginPath();
+            ctx.fillStyle = '#facc15';
+            ctx.arc(centerX, centerY, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#facc15';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // 2. Draw The Classical Orbit (Dashed circle)
+            ctx.beginPath();
+            ctx.strokeStyle = '#334155';
+            ctx.setLineDash([5, 5]);
+            ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 3. Draw The De Broglie Wave (Electron)
+            ctx.beginPath();
+            
+            // Color logic: Green if stable, Red/Glitching if unstable
+            if(isStable) {
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 4;
+                statusBox.className = "status-box status-stable";
+                statusBox.innerHTML = `Orbit Stable (n = ${n})`;
+            } else {
+                ctx.strokeStyle = '#f43f5e';
+                ctx.lineWidth = 2;
+                statusBox.className = "status-box status-unstable";
+                statusBox.innerHTML = `Orbit Destructive<br><small>Wave cancels itself</small>`;
+            }
+
+            // Draw the wave wrapped around the circle
+            for (let angle = 0; angle <= Math.PI * 2; angle += 0.01) {
+                // To wrap a sine wave around a circle:
+                // Radius at angle = Base Radius + Amplitude * sin(frequency * angle)
+                
+                // If unstable, the wave "drifts" (phase shift) showing it doesn't lock
+                const phaseShift = isStable ? 0 : time * 0.1; 
+                
+                // We use numWavelengths (exact float) to show the mismatch if it exists
+                const waveHeight = 15 * Math.sin((numWavelengths * angle) + time + phaseShift);
+                
+                // If it's extremely unstable (inteference), dampen the wave visual to show cancellation
+                const interferenceFactor = isStable ? 1 : Math.max(0.2, 1 - (deviation * 2));
+                
+                const currentR = r + (waveHeight * interferenceFactor);
+                
+                const x = centerX + currentR * Math.cos(angle);
+                const y = centerY + currentR * Math.sin(angle);
+
+                if (angle === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            // Close the loop visually
+            ctx.stroke();
+
+            // 4. Update Stats
+            circVal.innerText = circumference.toFixed(0);
+            waveVal.innerText = numWavelengths.toFixed(2);
+
+            time += 0.05;
+            requestAnimationFrame(draw);
+        }
+
+        // Helper to snap to nearest stable orbit
+        function snapToStable() {
+            const r = parseInt(slider.value);
+            const circumference = 2 * Math.PI * r;
+            const currentN = Math.round(circumference / LAMBDA);
+            const targetCircumference = currentN * LAMBDA;
+            const targetR = targetCircumference / (2 * Math.PI);
+            
+            slider.value = targetR;
+        }
+
+        // Event Listeners
+        slider.addEventListener('input', () => {
+            // Reset time slightly to minimize visual jump
+        });
+
+        draw();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Grid Simulation</title>
+    <style>
+        body {
+            background-color: #222;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 { margin-bottom: 10px; }
+        
+        .controls {
+            margin-bottom: 20px;
+            background: #333;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .stats-header {
+            font-weight: bold; color: #ff4444; margin-bottom: 10px;
+        }
+        .learning-stat { color: #ffd700; }
+
+        button {
+            background-color: #444;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 5px;
+            border-radius: 4px;
+        }
+
+        button#btn-simulate { background-color: #ff4444; border: none; color: white;}
+        button#btn-simulate:hover:not(:disabled) { background-color: #ff6666; }
+        
+        button#btn-reset { background-color: #ffd700; border: none; color: black;}
+        button#btn-reset:hover:not(:disabled) { background-color: #ffee66; }
+
+        button:disabled {
+            background-color: #333 !important;
+            color: #777 !important;
+            cursor: not-allowed;
+        }
+
+        #gameCanvasWrapper {
+             box-shadow: 0 0 20px rgba(255, 0, 0, 0.2);
+             border-radius: 4px;
+             overflow: hidden;
+        }
+        #gameCanvas {
+            background-color: #1a1a1a;
+            display: block;
+            cursor: crosshair;
+        }
+
+        #status-text {
+            margin-top: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            height: 25px;
+            color: #aaa;
+        }
+
+        .log-box {
+            width: 600px;
+            height: 120px;
+            background: #111;
+            border: 1px solid #333;
+            margin-top: 20px;
+            overflow-y: scroll;
+            padding: 10px;
+            color: #ccc;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+        }
+
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #222; }
+        .highlight { color: #fff; font-weight: bold; }
+        .win-r1 { color: #00ffff; }
+        .win-r2 { color: #ff00ff; }
+    </style>
+</head>
+<body>
+
+    <h1>Quantum Qudit Grid</h1>
+
+    <div class="controls">
+        <div class="stats-header">
+            Generation: <span id="gen-count">1</span> | 
+            Coordination Level: <span id="learning-meter" class="learning-stat">0%</span>
+        </div>
+        <br>
+        <button id="btn-simulate" onclick="nextGameStep()">Simulate: Start Round 1</button>
+        <button id="btn-reset" onclick="resetGame()" disabled>Reset & Learn</button>
+    </div>
+
+    <div id="gameCanvasWrapper">
+        <canvas id="gameCanvas" width="600" height="600"></canvas>
+    </div>
+    
+    <div id="status-text">Phase 0: Initializing 10x10 Grid...</div>
+
+    <div class="log-box" id="log-box"></div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const logBox = document.getElementById('log-box');
+        const statusText = document.getElementById('status-text');
+        const btnSimulate = document.getElementById('btn-simulate');
+        const btnReset = document.getElementById('btn-reset');
+        const learningMeter = document.getElementById('learning-meter');
+        const genCount = document.getElementById('gen-count');
+
+        // --- Game State ---
+        let generation = 1;
+        let coordination = 0.0; // 0.0 = Random, 1.0 = Strategic
+
+        // Phase tracking:
+        // 0: Initial State (10x10, 1 per cell)
+        // 1: Round 1 Chosen (Wait for click to reveal winner)
+        // 2: Round 1 Winner Revealed (Wait for click to setup R2)
+        // 3: Round 2 Setup (Grid resized, empty)
+        // 4: Round 2 Chosen (Wait for click to reveal winners)
+        // 5: Game Over (Results shown)
+        let gamePhase = 0; 
+
+        let totalQudits = 100;
+        let r1Dimensions = 100;
+        
+        // Data
+        let currentData = [];
+        let r1WinningIndex = -1;
+        let r1SurvivorsCount = 0; // 'x'
+        let finalSoloWinners = 0;
+
+        // Grid settings used by drawing functions
+        let currentGridRows = 10;
+        let currentGridCols = 10;
+
+        // --- Visualization Core ---
+
+        function clearCanvas() {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Helper to draw N red dots randomly inside a specific grid cell boundaries
+        function drawDotsInCell(colIndex, rowIndex, cellW, cellH, count, color = '#ff0000') {
+            const startX = colIndex * cellW;
+            const startY = rowIndex * cellH;
+            const padding = 6; // Keep dots away from grid lines
+
+            ctx.fillStyle = color;
+            for (let i = 0; i < count; i++) {
+                const x = startX + padding + Math.random() * (cellW - padding * 2);
+                const y = startY + padding + Math.random() * (cellH - padding * 2);
+                
+                ctx.beginPath();
+                // Make dots slightly bigger if there are fewer of them
+                let radius = count === 1 ? 5 : 3; 
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function highlightCell(colIndex, rowIndex, cellW, cellH, color) {
+             ctx.strokeStyle = color;
+             ctx.lineWidth = 4;
+             ctx.strokeRect(colIndex * cellW + 2, rowIndex * cellH + 2, cellW - 4, cellH - 4);
+             ctx.lineWidth = 1;
+        }
+
+        // Main drawing function responsible for grid lines and populating cells based on data
+        // highlightMode: 0=none, 1=highlight R1 winner (cyan), 2=highlight R2 solo winners (magenta)
+        function drawGridState(dataArray, rows, cols, highlightMode = 0) {
+            clearCanvas();
+            const cellW = canvas.width / cols;
+            const cellH = canvas.height / rows;
+
+            // 1. Draw Grid Lines
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let i = 0; i <= cols; i++) {
+                ctx.moveTo(i * cellW, 0);
+                ctx.lineTo(i * cellW, canvas.height);
+            }
+            for (let i = 0; i <= rows; i++) {
+                ctx.moveTo(0, i * cellH);
+                ctx.lineTo(canvas.width, i * cellH);
+            }
+            ctx.stroke();
+
+            // 2. Populate Cells and Highlight
+            dataArray.forEach((count, index) => {
+                const colIdx = index % cols;
+                const rowIdx = Math.floor(index / cols);
+
+                // Determine color based on highlight mode
+                let dotColor = '#ff0000';
+                if (highlightMode === 1 && index === r1WinningIndex) {
+                     highlightCell(colIdx, rowIdx, cellW, cellH, '#00ffff');
+                     dotColor = '#ffffff'; // Make winning dots white to pop
+                }
+                else if (highlightMode === 2 && count === 1) {
+                     highlightCell(colIdx, rowIdx, cellW, cellH, '#ff00ff');
+                     dotColor = '#ff00ff';
+                }
+
+                drawDotsInCell(colIdx, rowIdx, cellW, cellH, count, dotColor);
+            });
+        }
+
+        function log(msg, type = '') {
+            const div = document.createElement('div');
+            div.className = 'log-entry ' + type;
+            div.innerHTML = `> ${msg}`;
+            logBox.prepend(div);
+        }
+
+        // --- Main Interaction Loop ---
+
+        function nextGameStep() {
+            switch(gamePhase) {
+                case 0: runRound1Choices(); break;
+                case 1: revealRound1Winner(); break;
+                case 2: setupRound2Grid(); break;
+                case 3: runRound2Choices(); break;
+                case 4: revealRound2Results(); break;
+            }
+        }
+
+        // --- Game Logic Steps ---
+
+        function initializeGame() {
+            gamePhase = 0;
+            btnSimulate.disabled = false;
+            btnReset.disabled = true;
+            btnSimulate.innerText = "Simulate: Qudits Choose Dimensions (R1)";
+            
+            currentGridRows = 10;
+            currentGridCols = 10;
+            // Start 1 per dimension initially
+            currentData = new Array(100).fill(1);
+            
+            drawGridState(currentData, 10, 10);
+            statusText.innerHTML = "Phase 0: 100 Qudits initialized, 1 per 10x10 dimension.";
+            log("--- New Game Initialized ---");
+        }
+
+        function runRound1Choices() {
+            // Reset counts for actual choice
+            currentData = new Array(r1Dimensions).fill(0);
+
+            // Simulation logic with coordination strategy
+            for (let i = 0; i < totalQudits; i++) {
+                let choice;
+                if (Math.random() < coordination) {
+                    // Strategy: Crowd into center-ish cells to create a big army
+                    // Target a cell around index 44, 45, 54, 55 (center of 10x10)
+                    const centerTargets = [44, 45, 54, 55];
+                    choice = centerTargets[Math.floor(Math.random() * centerTargets.length)];
+                } else {
+                    // Random strategy
+                    choice = Math.floor(Math.random() * r1Dimensions);
+                }
+                currentData[choice]++;
+            }
+
+            drawGridState(currentData, 10, 10); // Draw without highlights yet
+            statusText.innerHTML = "Phase 1: Qudits have chosen. Click to see the winner.";
+            btnSimulate.innerText = "Simulate: Reveal R1 Winner";
+            log("Round 1: All 100 qudits have picked dimensions.");
+            gamePhase = 1;
+        }
+
+        function revealRound1Winner() {
+             // Find winner
+             let maxVal = -1;
+             r1WinningIndex = -1;
+             currentData.forEach((count, idx) => {
+                 if (count > maxVal) {
+                     maxVal = count;
+                     r1WinningIndex = idx;
+                 }
+             });
+             r1SurvivorsCount = maxVal;
+
+             // Draw with Highlight Mode 1 (Cyan border)
+             drawGridState(currentData, 10, 10, 1);
+             
+             statusText.innerHTML = `Phase 1 Result: Cell ${r1WinningIndex} won with ${r1SurvivorsCount} qudits.`;
+             log(`<span class="win-r1">R1 Winner:</span> Dimension index ${r1WinningIndex} dominated with ${r1SurvivorsCount} qudits. These ${r1SurvivorsCount} survive.`);
+             btnSimulate.innerText = `Simulate: Setup Round 2 (${r1SurvivorsCount} Dims)`;
+             gamePhase = 2;
+        }
+
+        function setupRound2Grid() {
+            if (r1SurvivorsCount < 2) {
+                log("Game Over prematurely: Not enough survivors for Round 2.", 'highlight');
+                finishGame();
+                statusText.innerHTML = "Game Over: Colony collapsed.";
+                return;
+            }
+
+            // "Make x dimensions" - Calculate grid size for x survivors
+            // Find closest square root to fit them
+            let side = Math.ceil(Math.sqrt(r1SurvivorsCount));
+            currentGridRows = side;
+            currentGridCols = side;
+            let totalNewDims = side * side;
+
+            statusText.innerHTML = `Phase 2 Setup: Creating a ${side}x${side} grid for the ${r1SurvivorsCount} survivors.`;
+            log(`Formatting universe: Creating ${totalNewDims} dimensions for Round 2.`);
+            
+            // Reset data for the new grid size, initially empty
+            currentData = new Array(totalNewDims).fill(0);
+            drawGridState(currentData, currentGridRows, currentGridCols);
+
+            btnSimulate.innerText = "Simulate: Qudits Choose (R2)";
+            gamePhase = 3;
+        }
+
+        function runRound2Choices() {
+             // currentData is currently all zeros, sized for the new grid.
+             // We only use the first 'r1SurvivorsCount' dimensions available.
+             let availableDimensions = r1SurvivorsCount;
+
+            for (let i = 0; i < r1SurvivorsCount; i++) {
+                let choice;
+                if (Math.random() < coordination) {
+                    // Strategy: Isolation. Pick your own index to ensure spacing.
+                    choice = i; 
+                } else {
+                    // Random strategy among available dimensions
+                    choice = Math.floor(Math.random() * availableDimensions);
+                }
+                currentData[choice]++;
+            }
+
+            drawGridState(currentData, currentGridRows, currentGridCols);
+            statusText.innerHTML = "Phase 2: Survivors have chosen. Click to reveal solo winners.";
+            btnSimulate.innerText = "Simulate: Reveal Final Results";
+            log("Round 2: Survivors have picked new dimensions.");
+            gamePhase = 4;
+        }
+
+        function revealRound2Results() {
+            // Calculate Solos
+            finalSoloWinners = 0;
+            // Only check up to the count we actually used, ignore extra grid padding cells
+            for(let i = 0; i < r1SurvivorsCount; i++) {
+                 if(currentData[i] === 1) finalSoloWinners++;
+            }
+
+            // Draw with Highlight Mode 2 (Magenta borders for count==1)
+            drawGridState(currentData, currentGridRows, currentGridCols, 2);
+            
+            statusText.innerHTML = `Game Over. ${finalSoloWinners} qudits found solitude and won!`;
+            log(`<span class="win-r2">Final Result:</span> ${finalSoloWinners} qudits won the game by being alone in their dimension.`);
+            
+            finishGame();
+        }
+
+        function finishGame() {
+            btnSimulate.disabled = true;
+            btnSimulate.innerText = "Game Over";
+            btnReset.disabled = false;
+            gamePhase = 5;
+
+            // Simple learning mechanism
+            let learnedAmount = 0.0;
+            // If R1 army was small, learn to cluster better
+            if (r1SurvivorsCount < 15) learnedAmount += 0.07;
+            // If R2 had few solo winners relative to population, learn to space better
+            if (finalSoloWinners < (r1SurvivorsCount * 0.4)) learnedAmount += 0.08;
+
+            coordination = Math.min(0.95, coordination + learnedAmount);
+        }
+
+        function resetGame() {
+            generation++;
+            genCount.innerText = generation;
+            learningMeter.innerText = Math.round(coordination * 100) + "%";
+            initializeGame();
+        }
+
+        // Start the first game on load
+        initializeGame();
+
+    </script>
+</body>
+</html>

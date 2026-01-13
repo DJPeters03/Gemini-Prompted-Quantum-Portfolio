@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantum System Simulator</title>
+    <style>
+        :root { --bg: #0b0c10; --panel: #1f2833; --cyan: #66fcf1; --gray: #c5c6c7; --red: #ff4b5c; --blue: #45a29e; }
+        body {
+            background-color: var(--bg); color: var(--gray); font-family: 'Courier New', monospace;
+            display: flex; flex-direction: column; align-items: center; margin: 0; padding: 10px; height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Layout */
+        .dashboard { display: flex; gap: 20px; height: 100%; width: 100%; max-width: 1200px; }
+        .left-panel { flex: 2; display: flex; flex-direction: column; gap: 10px; }
+        .right-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+
+        /* Containers */
+        .box { background: var(--panel); border-radius: 8px; padding: 15px; border: 1px solid #333; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        
+        /* The 100 Spheres Grid */
+        #sphereGrid {
+            display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; aspect-ratio: 1;
+        }
+        .qubit-cell {
+            position: relative; width: 100%; aspect-ratio: 1; border-radius: 50%;
+            background: #222; overflow: hidden; border: 1px solid #444; transition: transform 0.2s;
+        }
+        /* The spinning needle inside the qubit */
+        .needle {
+            position: absolute; top: 50%; left: 50%; width: 45%; height: 2px; background: rgba(255,255,255,0.8);
+            transform-origin: 0% 50%; transition: transform 0.1s linear;
+        }
+        
+        /* Graph */
+        .chart-container { flex: 1; position: relative; min-height: 200px; display: flex; align-items: flex-end; gap: 2px; padding-bottom: 20px; border-bottom: 2px solid #555; border-left: 2px solid #555;}
+        .bar { background: var(--cyan); width: 100%; opacity: 0.7; transition: height 0.5s; }
+        
+        /* Stats Display */
+        .big-number { 
+            word-break: break-all; font-size: 0.8em; color: var(--cyan); line-height: 1.2; 
+            max-height: 100px; overflow-y: auto; font-weight: bold;
+        }
+        h2 { margin: 0 0 10px 0; font-size: 1.2em; color: white; border-bottom: 1px solid #444; padding-bottom: 5px;}
+        
+        /* Controls */
+        .controls { display: flex; gap: 10px; }
+        button {
+            flex: 1; padding: 15px; font-size: 1em; font-weight: bold; border: none; border-radius: 5px; cursor: pointer;
+            text-transform: uppercase; transition: all 0.2s; color: #fff;
+        }
+        #btnCollapse { background: var(--red); box-shadow: 0 0 15px rgba(255, 75, 92, 0.4); }
+        #btnCollapse:hover { background: #ff1f3a; transform: scale(1.02); }
+        #btnAuto { background: var(--blue); }
+        #btnAuto.active { background: var(--cyan); color: #000; box-shadow: 0 0 15px var(--cyan); }
+
+        .stat-row { display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 5px; }
+        
+        /* Color states */
+        .state-0 { background: radial-gradient(circle at 30% 30%, #ff4b5c, #500); }
+        .state-1 { background: radial-gradient(circle at 30% 30%, #45a29e, #003); }
+        .state-super { background: radial-gradient(circle at 30% 30%, #2b2b2b, #000); }
+
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        
+        <div class="left-panel">
+            <div class="box" style="flex:1; display:flex; flex-direction:column;">
+                <h2>Quantum Register (100 Qubits)</h2>
+                <div id="sphereGrid"></div>
+            </div>
+            
+            <div class="controls">
+                <button id="btnCollapse" onclick="triggerCollapse()">⚡ Collapse Wavefunction</button>
+                <button id="btnAuto" onclick="toggleAuto()">🔄 Auto-Measure: OFF</button>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div class="box">
+                <h2>Measurement Result</h2>
+                <div class="stat-row"><span>Binary Sum (Hamming Weight):</span> <span id="valSum" style="color:white">0</span></div>
+                <div style="font-size: 0.7em; color: #888; margin-top:10px;">Base 10 Integer Value (2^100):</div>
+                <div class="big-number" id="valBigInt">Waiting for collapse...</div>
+            </div>
+
+            <div class="box" style="flex: 1; display:flex; flex-direction:column;">
+                <h2>Distribution Graph</h2>
+                <div style="font-size: 0.7em; margin-bottom: 10px; color:#aaa;">X: Sum of 1s (0-100) | Y: Frequency</div>
+                <div class="chart-container" id="chart">
+                    </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- Configuration ---
+    const TOTAL_QUBITS = 100;
+    let qubits = []; // Stores the current DOM elements and state
+    let isCollapsed = false;
+    let autoInterval = null;
+    let historyData = new Array(101).fill(0); // Histogram data (indices 0 to 100)
+
+    // --- Initialization ---
+    function init() {
+        const grid = document.getElementById('sphereGrid');
+        grid.innerHTML = '';
+        qubits = [];
+
+        for (let i = 0; i < TOTAL_QUBITS; i++) {
+            // Create DOM structure
+            let el = document.createElement('div');
+            el.className = 'qubit-cell state-super';
+            
+            let needle = document.createElement('div');
+            needle.className = 'needle';
+            el.appendChild(needle);
+            
+            grid.appendChild(el);
+
+            // Create Object
+            qubits.push({
+                el: el,
+                needle: needle,
+                phase: Math.random() * Math.PI * 2,
+                speed: 0.1 + Math.random() * 0.2, // Random rotation speed
+                value: null // 0 or 1 when collapsed
+            });
+        }
+        
+        // Start Animation Loop
+        requestAnimationFrame(animate);
+    }
+
+    // --- Animation Loop (The "Superposition" visual) ---
+    function animate(time) {
+        if (!isCollapsed) {
+            qubits.forEach(q => {
+                // Update Phase (Rotation)
+                q.phase += q.speed;
+                q.needle.style.transform = `rotate(${q.phase}rad)`;
+                
+                // Simulate "Breathing" Probability Amplitude
+                // We shift opacity slightly to show fluctuation
+                let probability = 0.5 + Math.sin(time * 0.005 + q.phase) * 0.2; 
+                q.needle.style.opacity = 0.3 + probability;
+            });
+        }
+        requestAnimationFrame(animate);
+    }
+
+    // --- The Core Logic: Collapse ---
+    function triggerCollapse() {
+        // Audio Effect (Optional visual flash handled by CSS)
+        isCollapsed = true;
+        let binaryString = "";
+        let onesCount = 0;
+
+        qubits.forEach(q => {
+            // 1. Determine Quantum State (50/50 Chance)
+            // In a real quantum computer, this probability depends on the gates applied.
+            // Here we assume a Hadamard state (Equal Superposition).
+            let outcome = Math.random() > 0.5 ? 1 : 0;
+            q.value = outcome;
+
+            // 2. Lock Visuals
+            q.el.className = outcome === 1 ? 'qubit-cell state-1' : 'qubit-cell state-0';
+            q.needle.style.transform = outcome === 1 ? 'rotate(-90deg)' : 'rotate(90deg)'; // Up or Down
+            q.needle.style.opacity = 1;
+
+            // 3. Build Data
+            binaryString += outcome;
+            if (outcome === 1) onesCount++;
+        });
+
+        // 4. Process Data
+        const bigIntValue = BigInt("0b" + binaryString); // Convert binary string to massive integer
+        
+        // 5. Update UI
+        updateReadout(onesCount, bigIntValue);
+        updateGraph(onesCount);
+        
+        // 6. Reset Timer (if not auto)
+        if (!autoInterval) {
+            setTimeout(returnToSuperposition, 1500); // Wait 1.5s then reset
+        } else {
+             setTimeout(returnToSuperposition, 200); // Faster reset in auto mode
+        }
+    }
+
+    function returnToSuperposition() {
+        if(!isCollapsed) return; // Already reset
+        isCollapsed = false;
+        qubits.forEach(q => {
+            q.el.className = 'qubit-cell state-super';
+            q.value = null;
+        });
+    }
+
+    // --- Data Visualization ---
+    function updateReadout(sum, bigInt) {
+        document.getElementById('valSum').innerText = sum + " / 100";
+        document.getElementById('valBigInt').innerText = bigInt.toString();
+    }
+
+    function updateGraph(val) {
+        // Increment the frequency of this specific sum (0-100)
+        historyData[val]++;
+        
+        const chart = document.getElementById('chart');
+        chart.innerHTML = ''; // Clear and redraw (simple approach)
+
+        // Find max for scaling
+        let maxFreq = Math.max(...historyData);
+        if (maxFreq === 0) maxFreq = 1;
+
+        // We only draw the relevant middle section to keep graph readable (e.g., 20-80)
+        // because getting 0 or 100 ones is statistically impossible (~1 in 10^30)
+        // But for correctness, we map all 100 slots.
+        
+        for (let i = 0; i <= 100; i++) {
+            let bar = document.createElement('div');
+            bar.className = 'bar';
+            
+            // Normalize height (max height 100%)
+            let h = (historyData[i] / maxFreq) * 100;
+            
+            bar.style.height = h + "%";
+            bar.style.width = "1%"; // 100 bars fit in 100% width
+            
+            // Highlight the most recent bar
+            if (i === val) {
+                bar.style.background = "#fff";
+                bar.style.boxShadow = "0 0 10px #fff";
+                bar.style.zIndex = 10;
+            } else {
+                // Color gradient based on X-axis position
+                // <50 Red (More 0s), >50 Blue (More 1s)
+                if (i < 40) bar.style.background = "var(--red)";
+                else if (i > 60) bar.style.background = "var(--blue)";
+                else bar.style.background = "var(--cyan)";
+            }
+            
+            chart.appendChild(bar);
+        }
+    }
+
+    // --- Auto Mode ---
+    function toggleAuto() {
+        const btn = document.getElementById('btnAuto');
+        
+        if (autoInterval) {
+            // Turn OFF
+            clearInterval(autoInterval);
+            autoInterval = null;
+            btn.innerText = "🔄 Auto-Measure: OFF";
+            btn.classList.remove('active');
+        } else {
+            // Turn ON
+            btn.innerText = "🔄 Auto-Measure: ON";
+            btn.classList.add('active');
+            
+            // Collapse every 500ms
+            autoInterval = setInterval(() => {
+                triggerCollapse();
+            }, 500);
+        }
+    }
+
+    // Run
+    init();
+
+</script>
+</body>
+</html>

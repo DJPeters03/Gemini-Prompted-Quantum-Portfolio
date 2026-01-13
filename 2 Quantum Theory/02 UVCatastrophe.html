@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>02 - Ultraviolet Catastrophe</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            color: #eee;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        #sidebar {
+            width: 300px;
+            background: #111;
+            border-right: 1px solid #333;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        h1 { margin: 0 0 5px 0; font-size: 1.6rem; color: #fff; }
+        h2 { margin: 0 0 30px 0; font-size: 0.9rem; color: #666; font-weight: normal; }
+
+        .control-group { margin-bottom: 30px; }
+        label { display: block; color: #888; margin-bottom: 10px; font-size: 0.9rem; }
+
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .legend-item { display: flex; align-items: center; margin-top: 10px; font-size: 0.9rem; color: #bbb; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 10px; }
+        .red-dot { background: #ff4444; box-shadow: 0 0 5px #ff4444; }
+        .blue-dot { background: #00d2ff; box-shadow: 0 0 5px #00d2ff; }
+
+        /* Graph Area */
+        #graph-container {
+            flex-grow: 1;
+            position: relative;
+            background: radial-gradient(circle at bottom left, #1a1a1a, #000);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            box-shadow: 0 0 40px rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.2);
+            border-radius: 4px;
+        }
+
+        /* Overlay Labels */
+        .axis-label {
+            position: absolute;
+            color: #666;
+            font-size: 0.8rem;
+            font-family: monospace;
+        }
+        #y-label { top: 40px; left: 40px; transform: rotate(-90deg); transform-origin: top left; }
+        #x-label { bottom: 40px; right: 40px; }
+
+        .annotation {
+            position: absolute;
+            color: #ff4444;
+            font-weight: bold;
+            top: 20%;
+            left: 15%;
+            text-shadow: 0 0 10px rgba(0,0,0,0.8);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h1>Quantum Theory</h1>
+        <h2>02. The Ultraviolet Catastrophe</h2>
+
+        <div class="control-group">
+            <label>TEMPERATURE: <span id="temp-val" style="color:#fff;">5000</span> K</label>
+            <input type="range" id="tempSlider" min="3000" max="8000" step="50" value="5000">
+        </div>
+
+        <div style="font-size: 0.9rem; line-height: 1.5; color: #999;">
+            <strong>The Failure:</strong><br>
+            Classical physics (Red) predicted that objects should radiate infinite energy at short wavelengths (UV/X-ray).
+            <br><br>
+            <strong>The Fix:</strong><br>
+            Planck introduced discrete quanta ($E=hf$), forcing the energy to drop to zero at the left side (Blue).
+        </div>
+
+        <div style="margin-top: auto;">
+            <div class="legend-item">
+                <div class="dot red-dot"></div> Classical Prediction
+            </div>
+            <div class="legend-item">
+                <div class="dot blue-dot"></div> Planck's Law (Reality)
+            </div>
+        </div>
+    </div>
+
+    <div id="graph-container">
+        <canvas id="simCanvas"></canvas>
+        <div class="axis-label" id="y-label">INTENSITY (Energy Density)</div>
+        <div class="axis-label" id="x-label">WAVELENGTH (nm)</div>
+        <div class="annotation" id="catastrophe-label">
+            &uarr; CATASTROPHE<br>(Goes to Infinity)
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('graph-container');
+    const slider = document.getElementById('tempSlider');
+    const tempVal = document.getElementById('temp-val');
+    
+    // Physics / Scale Constants
+    // We use arbitrary visual units to make the graph look good on screen
+    let width, height;
+    let T = 5000;
+    
+    // Range of Wavelengths to plot (in nanometers)
+    const MIN_WL = 100;  // UV
+    const MAX_WL = 3000; // Infrared
+
+    function resize() {
+        width = container.offsetWidth - 80;
+        height = container.offsetHeight - 80;
+        canvas.width = width;
+        canvas.height = height;
+        draw();
+    }
+    window.addEventListener('resize', resize);
+
+    // --- Interaction ---
+    slider.addEventListener('input', (e) => {
+        T = parseInt(e.target.value);
+        tempVal.innerText = T;
+        draw();
+    });
+
+    // --- Mathematical Functions (Visual Approximation) ---
+    
+    // Planck's Law: Intensity ~ (1/x^5) * (1 / (e^(B/xT) - 1))
+    function getPlanckY(wl, temp) {
+        // Constants tuned for visual scaling on typical screen
+        const c1 = 500000000; 
+        const c2 = 1000000;   
+        
+        // Avoid division by zero
+        if (wl <= 0) return 0;
+
+        const p1 = c1 / Math.pow(wl, 5);
+        const p2 = 1 / (Math.exp(c2 / (wl * temp)) - 1);
+        
+        return p1 * p2;
+    }
+
+    // Rayleigh-Jeans: Intensity ~ T / x^4
+    function getRayleighY(wl, temp) {
+        // Constant tuned to match Planck at high wavelengths (long tail)
+        const scale = 0.05; 
+        return (scale * temp) / Math.pow(wl, 4);
+    }
+
+    // --- Drawing ---
+    function draw() {
+        // 1. Clear Background
+        ctx.fillStyle = 'rgba(20, 20, 20, 0.8)';
+        ctx.fillRect(0, 0, width, height);
+
+        // 2. Draw Spectrum Background (Rainbow Gradient at bottom)
+        const gradient = ctx.createLinearGradient(0, height, width, height);
+        gradient.addColorStop(0, '#5500aa'); // UV
+        gradient.addColorStop(0.15, 'blue');
+        gradient.addColorStop(0.25, 'green');
+        gradient.addColorStop(0.35, 'red'); // Visible edge
+        gradient.addColorStop(1, '#000');   // IR
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, height - 10, width, 10);
+
+        // Map x-coordinate
+        function getX(nm) {
+            return ((nm - MIN_WL) / (MAX_WL - MIN_WL)) * width;
+        }
+
+        // Map y-coordinate
+        // We normalize based on a fixed max to stop graph jumping around
+        const MAX_Y_VAL = 0.0003; 
+        function getY(val) {
+            let y = height - (val / MAX_Y_VAL) * (height * 0.8) - 10;
+            return y; 
+        }
+
+        // 3. Draw Classical Curve (Red)
+        ctx.beginPath();
+        ctx.strokeStyle = '#ff4444';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]); // Dashed line implies "Theoretical"
+
+        let started = false;
+        for (let wl = MIN_WL; wl < MAX_WL; wl += 10) {
+            let val = getRayleighY(wl, T);
+            let x = getX(wl);
+            let y = getY(val);
+
+            // Clamp: Don't draw if it shoots off top of screen
+            if (y < -100) y = -100;
+
+            if (!started) { ctx.moveTo(x, y); started = true; }
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 4. Draw Planck Curve (Blue)
+        ctx.beginPath();
+        ctx.strokeStyle = '#00d2ff';
+        ctx.lineWidth = 4;
+        ctx.shadowColor = '#00d2ff';
+        ctx.shadowBlur = 10;
+
+        started = false;
+        for (let wl = MIN_WL; wl < MAX_WL; wl += 5) {
+            let val = getPlanckY(wl, T);
+            let x = getX(wl);
+            let y = getY(val);
+
+            if (!started) { ctx.moveTo(x, y); started = true; }
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // 5. Draw Peak Dot
+        // Peak of Planck is at approx 2898 / T (Wien's Law)
+        const peakWl = 2898000 / T; 
+        const peakVal = getPlanckY(peakWl, T);
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(getX(peakWl), getY(peakVal), 6, 0, Math.PI*2);
+        ctx.fill();
+
+        // 6. Labels on graph
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px sans-serif';
+        ctx.fillText(`Peak: ${Math.round(peakWl)} nm`, getX(peakWl) + 10, getY(peakVal) - 10);
+    }
+
+    // Init
+    resize();
+
+</script>
+</body>
+</html>

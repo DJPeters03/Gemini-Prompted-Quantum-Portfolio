@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Electron Battle Royale</title>
+    <style>
+        body {
+            background-color: #0a0a12;
+            color: #ddebff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        #canvas-container {
+            box-shadow: 0 0 30px rgba(0, 200, 255, 0.2);
+            border-radius: 50%;
+            padding: 20px;
+            background: radial-gradient(circle, #1a1a2e 0%, #0a0a12 70%);
+        }
+        canvas {
+            border-radius: 50%;
+            cursor: crosshair;
+        }
+        #status-panel {
+            margin-top: 20px;
+            text-align: center;
+        }
+        h1 { margin: 0; color: #00d2ff; text-shadow: 0 0 10px rgba(0, 210, 255, 0.5); }
+        .highlight { color: #ff3366; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>Quantum Battle Royale</h1>
+    <p>Electrons drop energy levels to fire photons. Hits cause ionization (elimination).</p>
+
+    <div id="canvas-container">
+        <canvas id="simCanvas" width="600" height="600"></canvas>
+    </div>
+
+    <div id="status-panel">
+        <h2 id="winner-text">Battle in progress...</h2>
+        <p>Atoms Remaining: <span id="remaining-count" class="highlight">10</span></p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+
+        // --- Configuration ---
+        const NUM_ATOMS = 10;
+        const ARENA_RADIUS = 220;
+        const ATOM_RADIUS_BASE = 20;
+        // Orbital radii multipliers for n=1, n=2, n=3
+        const ORBIT_LEVELS = [0, 1.0, 1.8, 2.8]; 
+        
+        // Probabilities per tick (adjust for game speed)
+        const PROB_EXCITE = 0.005; // Chance to gain energy (charge up)
+        const PROB_EMIT = 0.02;   // Chance to lose energy (fire photon) if excited
+
+        let atoms = [];
+        let photons = [];
+        let gameOver = false;
+
+        // --- Classes ---
+
+        class Atom {
+            constructor(id, angle) {
+                this.id = id;
+                this.x = centerX + ARENA_RADIUS * Math.cos(angle);
+                this.y = centerY + ARENA_RADIUS * Math.sin(angle);
+                this.alive = true;
+                
+                // Electron properties
+                this.n = 1; // Energy level (1, 2, or 3)
+                this.electronAngle = Math.random() * Math.PI * 2;
+                // Higher energy levels spin faster
+                this.spinSpeed = (0.05 / this.n) + Math.random()*0.02; 
+            }
+
+            update() {
+                if (!this.alive) return;
+
+                // 1. Spin Electron
+                this.electronAngle += this.spinSpeed;
+
+                // 2. Random Quantum Fluctuations
+                // Chance to charge up (Excitation) from vacuum energy
+                if (this.n < 3 && Math.random() < PROB_EXCITE) {
+                    this.n++;
+                    // Flash effect indicate charging
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, ATOM_RADIUS_BASE * 3, 0, Math.PI*2);
+                    ctx.strokeStyle = "rgba(0,255,255,0.5)";
+                    ctx.stroke();
+                }
+
+                // Chance to attack (Emission) if excited
+                if (this.n > 1 && Math.random() < PROB_EMIT) {
+                   this.firePhoton();
+                }
+                
+                // Recalculate speed based on new n
+                this.spinSpeed = (0.05 / this.n);
+            }
+
+            firePhoton() {
+                // Decide target
+                let livingAtoms = atoms.filter(a => a.alive && a.id !== this.id);
+                if (livingAtoms.length === 0) return;
+                let target = livingAtoms[Math.floor(Math.random() * livingAtoms.length)];
+
+                // Decide energy drop magnitude
+                let oldN = this.n;
+                // Randomly drop to a lower level (either n-1 or all the way to n=1)
+                let newN = Math.max(1, this.n - Math.ceil(Math.random() * (this.n-1)));
+                this.n = newN;
+
+                let energyReleased = oldN - newN; // 1 or 2
+
+                photons.push(new Photon(this.x, this.y, target, energyReleased));
+            }
+
+            draw() {
+                if (!this.alive) {
+                    // Draw dead atom husk
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 10, 0, Math.PI * 2);
+                    ctx.fillStyle = "#333";
+                    ctx.fill();
+                    return;
+                }
+
+                // Draw Nucleus
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = "#ff3366"; // Proton pink
+                ctx.fill();
+
+                // Draw Orbitals (ghostly rings)
+                for(let i=1; i<=3; i++) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, ATOM_RADIUS_BASE * ORBIT_LEVELS[i], 0, Math.PI * 2);
+                    ctx.strokeStyle = (i === this.n) ? "rgba(0, 200, 255, 0.6)" : "rgba(255,255,255,0.1)";
+                    ctx.lineWidth = (i === this.n) ? 2 : 1;
+                    ctx.stroke();
+                }
+
+                // Draw Electron
+                let currentRadius = ATOM_RADIUS_BASE * ORBIT_LEVELS[this.n];
+                let ex = this.x + currentRadius * Math.cos(this.electronAngle);
+                let ey = this.y + currentRadius * Math.sin(this.electronAngle);
+
+                ctx.beginPath();
+                ctx.arc(ex, ey, 5, 0, Math.PI * 2);
+                // Color changes based on energy level
+                ctx.fillStyle = this.n === 1 ? "#fff" : (this.n === 2 ? "#00d2ff" : "#5500ff");
+                ctx.shadowColor = ctx.fillStyle;
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        class Photon {
+            constructor(x, y, targetAtom, energy) {
+                this.x = x;
+                this.y = y;
+                this.target = targetAtom;
+                this.energy = energy; // 1 (low) or 2 (high)
+                this.speed = energy === 2 ? 8 : 5;
+                this.color = energy === 2 ? "#5500ff" : "#00d2ff"; // Violet vs Cyan
+                this.alive = true;
+                
+                // Wavy animation properties
+                this.travelDist = 0;
+                this.amplitude = energy === 2 ? 5 : 10; // Higher energy = tighter wave
+                this.frequency = energy === 2 ? 0.3 : 0.1;
+
+                // Calculate straight path vector
+                let dx = targetAtom.x - x;
+                let dy = targetAtom.y - y;
+                this.distTotal = Math.sqrt(dx*dx + dy*dy);
+                this.vx = (dx / this.distTotal) * this.speed;
+                this.vy = (dy / this.distTotal) * this.speed;
+                this.baseAngle = Math.atan2(dy, dx);
+            }
+
+            update() {
+                if(!this.alive) return;
+
+                this.x += this.vx;
+                this.y += this.vy;
+                this.travelDist += this.speed;
+
+                // Check collision or out of bounds
+                if(this.travelDist >= this.distTotal) {
+                    this.alive = false;
+                    if(this.target.alive) {
+                        this.checkHit();
+                    }
+                }
+            }
+
+            checkHit() {
+                // Probabilistic hit based on energy. 
+                // High energy (violet) photons have higher cross-section for ionization.
+                let hitChance = this.energy === 2 ? 0.85 : 0.5;
+                
+                if (Math.random() < hitChance) {
+                    // IONIZATION!
+                    this.target.alive = false;
+                    // Explosion effect
+                    ctx.beginPath();
+                    ctx.arc(this.target.x, this.target.y, 40, 0, Math.PI*2);
+                    ctx.fillStyle = "rgba(255, 50, 100, 0.8)";
+                    ctx.fill();
+                    checkWinCondition();
+                }
+            }
+
+            draw() {
+                if(!this.alive) return;
+
+                // Draw wavy path relative to current straight position
+                ctx.beginPath();
+                // Calculate perpendicular offset for wave
+                let waveOffset = Math.sin(this.travelDist * this.frequency) * this.amplitude;
+                let perpAngle = this.baseAngle + Math.PI/2;
+                
+                let drawX = this.x + Math.cos(perpAngle) * waveOffset;
+                let drawY = this.y + Math.sin(perpAngle) * waveOffset;
+
+                ctx.arc(drawX, drawY, 3, 0, Math.PI*2);
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 15;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // --- Game Loop Functions ---
+
+        function init() {
+            for (let i = 0; i < NUM_ATOMS; i++) {
+                let angle = (Math.PI * 2 / NUM_ATOMS) * i;
+                atoms.push(new Atom(i, angle));
+            }
+            gameLoop();
+        }
+
+        function checkWinCondition() {
+            let living = atoms.filter(a => a.alive);
+            document.getElementById('remaining-count').innerText = living.length;
+
+            if (living.length <= 1) {
+                gameOver = true;
+                let winnerText = document.getElementById('winner-text');
+                if (living.length === 1) {
+                    winnerText.innerText = `WINNER: Atom ID ${living[0].id}!`;
+                    winnerText.style.color = "#00ff00";
+                } else {
+                    winnerText.innerText = "MUTUAL DESTRUCTION - DRAW";
+                }
+            }
+        }
+
+        function gameLoop() {
+            if (gameOver) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw connection lines (the "field")
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, ARENA_RADIUS, 0, Math.PI*2);
+            ctx.strokeStyle = "rgba(255,255,255,0.05)";
+            ctx.stroke();
+
+            // Update and Draw Atoms
+            atoms.forEach(atom => {
+                atom.update();
+                atom.draw();
+            });
+
+            // Update and Draw Photons
+            // Filter out dead photons first
+            photons = photons.filter(p => p.alive);
+            photons.forEach(photon => {
+                photon.update();
+                photon.draw();
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start simulation
+        init();
+
+    </script>
+</body>
+</html>

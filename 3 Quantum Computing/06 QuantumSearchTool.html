@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Search Tool</title>
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --panel: #151b2b;
+            --accent: #00d2ff;
+            --secondary: #ff0055;
+            --text: #e0e6ed;
+            --grid-line: #1f293a;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 { margin-bottom: 5px; text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 0 10px var(--accent); }
+        .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 30px; }
+
+        /* Main Interface */
+        .interface {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* The Grid Display */
+        .viewport {
+            position: relative;
+            background: #000;
+            border: 2px solid var(--panel);
+            box-shadow: 0 0 30px rgba(0, 210, 255, 0.05);
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        /* Sidebar Controls */
+        .controls {
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--panel);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #2d3748;
+        }
+
+        h3 { margin: 0 0 15px 0; color: var(--accent); font-size: 1rem; }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        .stat-val { font-weight: bold; font-family: monospace; }
+        .classical-val { color: var(--secondary); }
+        .quantum-val { color: var(--accent); }
+
+        /* Buttons & Inputs */
+        button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: 0.2s;
+            margin-bottom: 10px;
+        }
+
+        .btn-classical {
+            background: rgba(255, 0, 85, 0.1);
+            color: var(--secondary);
+            border: 1px solid var(--secondary);
+        }
+        .btn-classical:hover:not(:disabled) { background: var(--secondary); color: white; }
+
+        .btn-quantum {
+            background: rgba(0, 210, 255, 0.1);
+            color: var(--accent);
+            border: 1px solid var(--accent);
+        }
+        .btn-quantum:hover:not(:disabled) { background: var(--accent); color: #000; }
+
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .instruction {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            line-height: 1.4;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        #target-display {
+            font-family: monospace;
+            color: #fff;
+            text-align: center;
+            margin-top: 5px;
+        }
+
+        /* 3D Bar visualization helper */
+        .bar-container {
+            display: flex;
+            align-items: flex-end;
+            height: 60px;
+            gap: 1px;
+            margin-top: 10px;
+            border-bottom: 1px solid #333;
+        }
+        .bar { flex: 1; background: var(--accent); opacity: 0.5; transition: height 0.2s; }
+    </style>
+</head>
+<body>
+
+    <h1>Quantum Search Engine</h1>
+    <div class="subtitle">Grover's Algorithm Simulator | Search Space: 400 Items</div>
+
+    <div class="interface">
+        
+        <div class="viewport">
+            <canvas id="gridCanvas" width="400" height="400"></canvas>
+            <div id="target-display">Click grid to hide a "Key"</div>
+        </div>
+
+        <div class="controls">
+            
+            <div class="card">
+                <h3>Problem Definition</h3>
+                <p class="instruction">
+                    1. Click anywhere on the grid to hide the <strong>Key</strong>.<br>
+                    2. Choose a solver to find it.
+                </p>
+                <div class="stat-row">
+                    <span>Target Location:</span>
+                    <span id="target-idx" class="stat-val">---</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Classical Computer</h3>
+                <div class="instruction">Brute Force: Checks boxes one by one.</div>
+                <br>
+                <div class="stat-row">
+                    <span>Queries Used:</span>
+                    <span id="c-queries" class="stat-val classical-val">0</span>
+                </div>
+                <div class="stat-row">
+                    <span>Status:</span>
+                    <span id="c-status" class="stat-val">Idle</span>
+                </div>
+                <button class="btn-classical" id="btn-c" onclick="runClassical()" disabled>Run Classical Search</button>
+            </div>
+
+            <div class="card">
+                <h3>Quantum Computer</h3>
+                <div class="instruction">Amplitude Amplification: Inverts probability waves to pinpoint target.</div>
+                <br>
+                <div class="stat-row">
+                    <span>Operations:</span>
+                    <span id="q-ops" class="stat-val quantum-val">0</span>
+                </div>
+                <div class="stat-row">
+                    <span>Probability Found:</span>
+                    <span id="q-prob" class="stat-val">0.25%</span>
+                </div>
+                <button class="btn-quantum" id="btn-q" onclick="runQuantum()" disabled>Run Quantum Search</button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- Setup ---
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d');
+        const COLS = 20;
+        const ROWS = 20;
+        const N = COLS * ROWS; // 400
+        const CELL_SIZE = 400 / COLS; // 20px
+
+        // State
+        let targetIndex = -1;
+        let amplitudes = new Float32Array(N);
+        let isRunning = false;
+        let animationId = null;
+
+        // UI Elements
+        const ui = {
+            targetIdx: document.getElementById('target-idx'),
+            cQueries: document.getElementById('c-queries'),
+            cStatus: document.getElementById('c-status'),
+            qOps: document.getElementById('q-ops'),
+            qProb: document.getElementById('q-prob'),
+            btnC: document.getElementById('btn-c'),
+            btnQ: document.getElementById('btn-q')
+        };
+
+        // --- Core Visualization ---
+
+        function drawGrid(mode = 'neutral', currentIndex = -1) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < N; i++) {
+                let col = i % COLS;
+                let row = Math.floor(i / COLS);
+                let x = col * CELL_SIZE;
+                let y = row * CELL_SIZE;
+
+                // Base Style
+                ctx.strokeStyle = '#1f293a';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
+
+                if (mode === 'classical') {
+                    // Classical Logic: Visited = Red, Unvisited = Dark
+                    if (i === currentIndex) {
+                        ctx.fillStyle = '#ff0055'; // Current Check
+                        ctx.fillRect(x + 2, y + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+                    } else if (i < currentIndex) {
+                        ctx.fillStyle = '#331122'; // Visited
+                        ctx.fillRect(x + 2, y + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+                    }
+                } 
+                else if (mode === 'quantum') {
+                    // Quantum Logic: Brightness = Probability Amplitude
+                    // Amplitude starts at 1/sqrt(N) = 0.05.
+                    // Max amp is 1.0.
+                    let amp = Math.abs(amplitudes[i]);
+                    let brightness = Math.min(255, amp * 255 * 3); // Multiply to make initial visible
+                    
+                    // If amp is negative (Phase flipped), tint it slightly different? 
+                    // For simplicity, we just map magnitude to Blue brightness.
+                    let color = `rgb(0, ${Math.floor(brightness)}, ${Math.floor(brightness)})`;
+                    
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x + 1, y + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+
+                    // Show phase flip (Oracle) with a small marker if needed, 
+                    // but pure brightness is cleaner.
+                } 
+                else {
+                    // Setup Mode: Just show selection
+                    if (i === targetIndex) {
+                        ctx.strokeStyle = '#00d2ff';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(x+4, y+4, CELL_SIZE-8, CELL_SIZE-8);
+                        ctx.fillStyle = 'rgba(0, 210, 255, 0.2)';
+                        ctx.fillRect(x+4, y+4, CELL_SIZE-8, CELL_SIZE-8);
+                    }
+                }
+            }
+        }
+
+        // --- Interaction ---
+
+        canvas.addEventListener('click', (e) => {
+            if (isRunning) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const col = Math.floor(x / CELL_SIZE);
+            const row = Math.floor(y / CELL_SIZE);
+            
+            targetIndex = row * COLS + col;
+            
+            ui.targetIdx.innerText = `[${col}, ${row}] (ID: ${targetIndex})`;
+            ui.btnC.disabled = false;
+            ui.btnQ.disabled = false;
+            
+            // Reset state
+            ui.cQueries.innerText = '0';
+            ui.cStatus.innerText = 'Ready';
+            ui.qOps.innerText = '0';
+            ui.qProb.innerText = '0.25%';
+            
+            drawGrid('neutral');
+        });
+
+        // --- Classical Solver (Brute Force) ---
+
+        function runClassical() {
+            if (isRunning) return;
+            isRunning = true;
+            ui.btnC.disabled = true;
+            ui.btnQ.disabled = true;
+            ui.cStatus.innerText = 'Scanning...';
+
+            let checkIndex = 0;
+            // To make it watchable, we skip steps or run fast
+            // 400 items. Let's check 1 every 10ms.
+            
+            animationId = setInterval(() => {
+                ui.cQueries.innerText = checkIndex + 1;
+                drawGrid('classical', checkIndex);
+
+                if (checkIndex === targetIndex) {
+                    clearInterval(animationId);
+                    ui.cStatus.innerText = 'FOUND!';
+                    ui.cStatus.style.color = '#00ff41';
+                    isRunning = false;
+                    ui.btnC.disabled = false;
+                    ui.btnQ.disabled = false;
+                    // Highlight the find
+                    ctx.fillStyle = '#00ff41';
+                    let col = targetIndex % COLS;
+                    let row = Math.floor(targetIndex / COLS);
+                    ctx.fillRect(col*CELL_SIZE, row*CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                } else {
+                    checkIndex++;
+                    // Wrap around just in case (shouldn't happen in ordered search)
+                    if (checkIndex >= N) checkIndex = 0;
+                }
+            }, 10); // 10ms per check = ~2 seconds avg for 200 checks
+        }
+
+        // --- Quantum Solver (Grover's Algorithm) ---
+
+        function runQuantum() {
+            if (isRunning) return;
+            isRunning = true;
+            ui.btnC.disabled = true;
+            ui.btnQ.disabled = true;
+
+            // 1. Initialize Superposition
+            // Every state has amplitude 1 / sqrt(N)
+            const initialAmp = 1 / Math.sqrt(N);
+            for(let i=0; i<N; i++) amplitudes[i] = initialAmp;
+
+            let steps = 0;
+            // Optimal steps = (PI / 4) * sqrt(N)
+            // sqrt(400) = 20. (3.14 / 4) * 20 = ~15.7 steps.
+            const maxSteps = Math.floor((Math.PI / 4) * Math.sqrt(N));
+
+            // Visualization Interval
+            // Grover steps are complex, so we run them slowly (500ms per step)
+            animationId = setInterval(() => {
+                steps++;
+                ui.qOps.innerText = steps;
+
+                // --- Grover Iteration ---
+                
+                // A. Oracle (Phase Flip)
+                // The target state is flipped (multiplied by -1)
+                amplitudes[targetIndex] = -amplitudes[targetIndex];
+
+                // B. Diffuser (Inversion about the Mean)
+                // 1. Calculate Mean
+                let sum = 0;
+                for(let i=0; i<N; i++) sum += amplitudes[i];
+                let mean = sum / N;
+
+                // 2. Reflect: newAmp = 2*mean - oldAmp
+                for(let i=0; i<N; i++) {
+                    amplitudes[i] = (2 * mean) - amplitudes[i];
+                }
+
+                // --- UI Update ---
+                
+                // Calculate probability of measuring target (Amp^2)
+                let prob = (amplitudes[targetIndex] * amplitudes[targetIndex]) * 100;
+                ui.qProb.innerText = prob.toFixed(1) + '%';
+                
+                drawGrid('quantum');
+
+                // Stop at optimal steps
+                if (steps >= maxSteps) {
+                    clearInterval(animationId);
+                    isRunning = false;
+                    ui.btnC.disabled = false;
+                    ui.btnQ.disabled = false;
+                    
+                    // Final visual "Measurement"
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 3;
+                    let col = targetIndex % COLS;
+                    let row = Math.floor(targetIndex / COLS);
+                    ctx.strokeRect(col*CELL_SIZE, row*CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                }
+
+            }, 400); // 400ms per Grover Step
+        }
+
+        // Initial Draw
+        drawGrid();
+
+    </script>
+</body>
+</html>

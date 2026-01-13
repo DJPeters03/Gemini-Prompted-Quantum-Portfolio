@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Qubit Maze Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050510; /* Deep dark blue/black */
+            color: #ffffff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            color: #00f3ff; /* Cyan */
+            text-shadow: 0 0 10px #00f3ff;
+        }
+
+        #stats {
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .stat-box {
+            display: inline-block;
+            margin: 0 15px;
+            padding: 5px 10px;
+            border: 1px solid #333;
+            border-radius: 5px;
+            background: #111;
+        }
+
+        canvas {
+            border: 2px solid #333;
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+            background-color: #000;
+        }
+
+        #controls {
+            margin-top: 15px;
+        }
+
+        button {
+            background-color: #00f3ff;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background-color: #ffffff;
+            box-shadow: 0 0 15px #00f3ff;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Qubit Maze: Superposition Search</h1>
+
+    <div id="stats">
+        <div class="stat-box">Generation: <span id="genCount" style="color: #ff00ff">1</span></div>
+        <div class="stat-box">Status: <span id="statusText">Searching...</span></div>
+    </div>
+
+    <canvas id="mazeCanvas"></canvas>
+
+    <div id="controls">
+        <button onclick="resetSimulation()">Generate New Maze</button>
+    </div>
+
+<script>
+    // --- Configuration ---
+    const COLS = 41; // Must be odd
+    const ROWS = 41; // Must be odd
+    const CELL_SIZE = 15;
+    const SPEED_MS = 20; // Lower is faster
+
+    // --- State Variables ---
+    let canvas, ctx;
+    let grid = [];
+    let stack = [];
+    let current; // Used for maze generation
+    let agent;
+    let generation = 1;
+    let globalMemory = []; // Stores "Bad" paths (-1 interference)
+    let animationId;
+    let exitCell;
+    let startCell;
+
+    // --- Classes ---
+
+    class Cell {
+        constructor(i, j) {
+            this.i = i;
+            this.j = j;
+            this.walls = [true, true, true, true]; // Top, Right, Bottom, Left
+            this.visited = false; // For generation
+        }
+
+        show() {
+            let x = this.i * CELL_SIZE;
+            let y = this.j * CELL_SIZE;
+
+            ctx.strokeStyle = "#444";
+            ctx.lineWidth = 1;
+
+            if (this.walls[0]) this.line(x, y, x + CELL_SIZE, y);
+            if (this.walls[1]) this.line(x + CELL_SIZE, y, x + CELL_SIZE, y + CELL_SIZE);
+            if (this.walls[2]) this.line(x + CELL_SIZE, y + CELL_SIZE, x, y + CELL_SIZE);
+            if (this.walls[3]) this.line(x, y + CELL_SIZE, x, y);
+
+            // Visualize "Bad" memory (Interference)
+            if (globalMemory[this.index(this.i, this.j)] === -1) {
+                ctx.fillStyle = "rgba(255, 0, 0, 0.3)";
+                ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+            }
+        }
+
+        line(x1, y1, x2, y2) {
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+
+        index(i, j) {
+            if (i < 0 || j < 0 || i > COLS - 1 || j > ROWS - 1) return -1;
+            return j * COLS + i;
+        }
+
+        checkNeighbors() {
+            let neighbors = [];
+            let top = grid[this.index(this.i, this.j - 1)];
+            let right = grid[this.index(this.i + 1, this.j)];
+            let bottom = grid[this.index(this.i, this.j + 1)];
+            let left = grid[this.index(this.i - 1, this.j)];
+
+            if (top && !top.visited) neighbors.push(top);
+            if (right && !right.visited) neighbors.push(right);
+            if (bottom && !bottom.visited) neighbors.push(bottom);
+            if (left && !left.visited) neighbors.push(left);
+
+            if (neighbors.length > 0) {
+                let r = Math.floor(Math.random() * neighbors.length);
+                return neighbors[r];
+            } else {
+                return undefined;
+            }
+        }
+    }
+
+    class QubitAgent {
+        constructor() {
+            this.col = startCell.i;
+            this.row = startCell.j;
+            this.path = [{i: this.col, j: this.row}];
+            this.alive = true;
+            this.won = false;
+        }
+
+        show() {
+            // Draw Agent
+            let x = this.col * CELL_SIZE;
+            let y = this.row * CELL_SIZE;
+            
+            // Draw trail
+            ctx.strokeStyle = "rgba(0, 243, 255, 0.5)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            if(this.path.length > 0) {
+                let startX = this.path[0].i * CELL_SIZE + CELL_SIZE/2;
+                let startY = this.path[0].j * CELL_SIZE + CELL_SIZE/2;
+                ctx.moveTo(startX, startY);
+                for(let p of this.path) {
+                    ctx.lineTo(p.i * CELL_SIZE + CELL_SIZE/2, p.j * CELL_SIZE + CELL_SIZE/2);
+                }
+            }
+            ctx.stroke();
+
+            // Draw Head
+            ctx.fillStyle = "#00f3ff"; // Cyan
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = "#00f3ff";
+            ctx.fillRect(x + 4, y + 4, CELL_SIZE - 8, CELL_SIZE - 8);
+            ctx.shadowBlur = 0;
+        }
+
+        step() {
+            if (!this.alive || this.won) return;
+
+            // 1. Get possible moves (Up, Right, Down, Left)
+            let moves = this.getValidMoves();
+
+            if (moves.length === 0) {
+                this.alive = false;
+                // Mark current spot as bad interference
+                let idx = this.row * COLS + this.col;
+                globalMemory[idx] = -1;
+                return;
+            }
+
+            // 2. Superposition & Measurement Logic
+            // We simulate looking down 2 paths. 
+            // +1 Reward if path leads to open space. -1 if it leads to wall or 'bad' memory.
+            
+            let bestMove = null;
+            let bestScore = -999;
+
+            // Shuffle moves to simulate random superposition selection
+            moves.sort(() => Math.random() - 0.5);
+            let pathsToTest = moves.slice(0, 2); // Pick 2 paths to exist in
+
+            // If only 1 move is available, we just take it (forced collapse)
+            if (moves.length === 1) pathsToTest = moves;
+
+            for (let move of pathsToTest) {
+                let score = 0;
+                
+                // Heuristic: Distance to exit (Standard quantum walk bias)
+                let dist = Math.abs(move.i - exitCell.i) + Math.abs(move.j - exitCell.j);
+                score -= dist * 0.1; // Small penalty for distance
+
+                // Look-ahead (Measurement)
+                // Does this move have valid neighbors?
+                let futureMoves = this.getFutureMoves(move.i, move.j);
+                if (futureMoves > 0 || (move.i === exitCell.i && move.j === exitCell.j)) {
+                    score += 1; // Constructive Interference
+                } else {
+                    score -= 1; // Destructive Interference
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove = move;
+                }
+            }
+
+            // 3. Collapse (Move)
+            if (bestMove) {
+                this.col = bestMove.i;
+                this.row = bestMove.j;
+                this.path.push({i: this.col, j: this.row});
+
+                if (this.col === exitCell.i && this.row === exitCell.j) {
+                    this.won = true;
+                    document.getElementById('statusText').innerText = "EXIT FOUND!";
+                    document.getElementById('statusText').style.color = "#00ff00";
+                }
+            }
+        }
+
+        getValidMoves() {
+            let moves = [];
+            let c = grid[this.row * COLS + this.col];
+            
+            // Helper to add move if no wall and not visited recently
+            const check = (cell, wallIdx) => {
+                if (!c.walls[wallIdx]) {
+                    // Check if it's in global memory as BAD
+                    let idx = cell.j * COLS + cell.i;
+                    if (globalMemory[idx] === -1) return;
+
+                    // Don't go back to immediate previous step (backtracking prevention)
+                    if (this.path.length > 1) {
+                        let prev = this.path[this.path.length - 2];
+                        if (prev.i === cell.i && prev.j === cell.j) return;
+                    }
+                    moves.push(cell);
+                }
+            };
+
+            let top = grid[this.index(this.col, this.row - 1)];
+            let right = grid[this.index(this.col + 1, this.row)];
+            let bottom = grid[this.index(this.col, this.row + 1)];
+            let left = grid[this.index(this.col - 1, this.row)];
+
+            if (top) check(top, 0);
+            if (right) check(right, 1);
+            if (bottom) check(bottom, 2);
+            if (left) check(left, 3);
+
+            return moves;
+        }
+
+        // Simulates looking one step deeper
+        getFutureMoves(c, r) {
+            let count = 0;
+            let currentCell = grid[r * COLS + c];
+            
+            // Check all 4 directions from the hypothetical future cell
+            let neighbors = [
+                { cell: grid[this.index(c, r-1)], wall: 0 },
+                { cell: grid[this.index(c+1, r)], wall: 1 },
+                { cell: grid[this.index(c, r+1)], wall: 2 },
+                { cell: grid[this.index(c-1, r)], wall: 3 }
+            ];
+
+            for (let n of neighbors) {
+                if (n.cell && !currentCell.walls[n.wall]) {
+                    // It's a valid path, but is it the one we just came from?
+                    if (n.cell.i !== this.col || n.cell.j !== this.row) {
+                        count++;
+                    }
+                }
+            }
+            return count;
+        }
+
+        index(i, j) {
+            if (i < 0 || j < 0 || i > COLS - 1 || j > ROWS - 1) return -1;
+            return j * COLS + i;
+        }
+    }
+
+    // --- Main Logic ---
+
+    window.onload = setup;
+
+    function setup() {
+        canvas = document.getElementById('mazeCanvas');
+        ctx = canvas.getContext('2d');
+        canvas.width = COLS * CELL_SIZE;
+        canvas.height = ROWS * CELL_SIZE;
+
+        resetSimulation();
+    }
+
+    function resetSimulation() {
+        // Init Grid
+        grid = [];
+        stack = [];
+        globalMemory = new Array(COLS * ROWS).fill(0);
+        generation = 1;
+        document.getElementById('genCount').innerText = generation;
+        document.getElementById('statusText').innerText = "Searching...";
+        document.getElementById('statusText').style.color = "#fff";
+
+        for (let j = 0; j < ROWS; j++) {
+            for (let i = 0; i < COLS; i++) {
+                grid.push(new Cell(i, j));
+            }
+        }
+
+        // Generate Maze (Recursive Backtracking)
+        current = grid[0];
+        // Use a loop instead of recursion to avoid stack overflow on large grids
+        current.visited = true;
+        
+        // 1. Generate Maze
+        generateMazeIterative();
+
+        // 2. Open Center (Make 4 paths available)
+        let cx = Math.floor(COLS / 2);
+        let cy = Math.floor(ROWS / 2);
+        startCell = grid[cy * COLS + cx];
+        
+        // Remove walls around center
+        removeWalls(startCell, grid[(cy-1)*COLS + cx]); // Top
+        removeWalls(startCell, grid[(cy+1)*COLS + cx]); // Bottom
+        removeWalls(startCell, grid[cy*COLS + (cx-1)]); // Left
+        removeWalls(startCell, grid[cy*COLS + (cx+1)]); // Right
+
+        // 3. Set Exit
+        exitCell = grid[1 * COLS + (COLS - 2)]; // Top rightish
+        
+        // 4. Create Agent
+        agent = new QubitAgent();
+
+        // 5. Start Loop
+        if (animationId) cancelAnimationFrame(animationId);
+        draw();
+    }
+
+    function generateMazeIterative() {
+        // Standard backtracking maze gen
+        let active = grid[Math.floor(COLS/2) + Math.floor(ROWS/2) * COLS]; // Start gen from center
+        active.visited = true;
+        stack.push(active);
+
+        while(stack.length > 0) {
+            let current = stack[stack.length - 1];
+            let next = current.checkNeighbors();
+            
+            if (next) {
+                next.visited = true;
+                stack.push(next);
+                removeWalls(current, next);
+            } else {
+                stack.pop();
+            }
+        }
+    }
+
+    function removeWalls(a, b) {
+        if (!a || !b) return;
+        let x = a.i - b.i;
+        if (x === 1) { a.walls[3] = false; b.walls[1] = false; }
+        else if (x === -1) { a.walls[1] = false; b.walls[3] = false; }
+        
+        let y = a.j - b.j;
+        if (y === 1) { a.walls[0] = false; b.walls[2] = false; }
+        else if (y === -1) { a.walls[2] = false; b.walls[0] = false; }
+    }
+
+    function draw() {
+        // Clear background
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Maze Walls
+        for (let i = 0; i < grid.length; i++) {
+            grid[i].show();
+        }
+
+        // Draw Start and Exit
+        ctx.fillStyle = "#00ff00"; // Start Lime
+        ctx.fillRect(startCell.i * CELL_SIZE + 2, startCell.j * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+        
+        ctx.fillStyle = "#ff0000"; // Exit Red
+        ctx.fillRect(exitCell.i * CELL_SIZE + 2, exitCell.j * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+
+        // Update and Draw Agent
+        if (!agent.won) {
+            agent.step();
+        }
+        
+        // Check for agent death
+        if (!agent.alive) {
+            // Respawn
+            generation++;
+            document.getElementById('genCount').innerText = generation;
+            agent = new QubitAgent();
+        }
+
+        agent.show();
+
+        animationId = requestAnimationFrame(draw);
+    }
+
+</script>
+</body>
+</html>

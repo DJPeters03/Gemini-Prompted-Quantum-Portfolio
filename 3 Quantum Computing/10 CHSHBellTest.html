@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CHSH Bell Test — Classical vs Quantum</title>
+  <style>
+    :root{
+      --bg:#070A12;
+      --panel:#0E1626;
+      --panel2:#0B1220;
+      --text:#E6EDF7;
+      --muted:#8AA0BF;
+      --accent:#00D4FF;
+      --good:#22C55E;
+      --bad:#F43F5E;
+      --warn:#FBBF24;
+      --grid:#1B2A44;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:radial-gradient(1200px 700px at 20% 10%, #0D1B3A 0%, var(--bg) 55%);
+      color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      display:flex;
+      justify-content:center;
+      padding:20px;
+    }
+    .wrap{
+      width:min(1200px, 100%);
+      display:grid;
+      grid-template-columns: 360px 1fr;
+      gap:18px;
+    }
+    .card{
+      background:linear-gradient(180deg, var(--panel), var(--panel2));
+      border:1px solid #1C2B45;
+      border-radius:14px;
+      box-shadow:0 14px 45px rgba(0,0,0,0.45);
+      overflow:hidden;
+    }
+    .side{
+      padding:18px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+    h1{
+      margin:0;
+      font-weight:700;
+      letter-spacing:0.6px;
+      font-size:18px;
+      color:var(--accent);
+    }
+    .subtitle{
+      margin-top:6px;
+      color:var(--muted);
+      font-size:12.5px;
+      line-height:1.45;
+    }
+    .pillrow{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;}
+    .pill{
+      font-size:12px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid #223455;
+      background:rgba(0,0,0,0.25);
+      color:var(--muted);
+    }
+    .pill strong{color:var(--text)}
+    .controls{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      padding:14px;
+      border-radius:12px;
+      background:rgba(0,0,0,0.18);
+      border:1px solid #1F2F4B;
+    }
+    label{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      font-size:12px;
+      color:var(--muted);
+      margin-bottom:6px;
+    }
+    input[type="range"]{width:100%;}
+    select, button{
+      width:100%;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid #2A3E66;
+      background:#0A1220;
+      color:var(--text);
+      font-weight:600;
+      cursor:pointer;
+      outline:none;
+    }
+    button{
+      background:linear-gradient(90deg, rgba(0,212,255,0.20), rgba(0,212,255,0.06));
+      border-color:#2C6B86;
+    }
+    button:hover{filter:brightness(1.07)}
+    .btnrow{display:grid; grid-template-columns: 1fr 1fr; gap:10px;}
+    .tiny{
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.45;
+    }
+
+    .main{
+      padding:0;
+      display:flex;
+      flex-direction:column;
+    }
+    .topbar{
+      padding:14px 16px;
+      border-bottom:1px solid #1C2B45;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .sval{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size:14px;
+      color:var(--text);
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .badge{
+      padding:6px 10px;
+      border-radius:10px;
+      border:1px solid #223455;
+      background:rgba(0,0,0,0.22);
+    }
+    .badge.good{border-color:rgba(34,197,94,0.5); color:var(--good)}
+    .badge.bad{border-color:rgba(244,63,94,0.5); color:var(--bad)}
+    .badge.warn{border-color:rgba(251,191,36,0.5); color:var(--warn)}
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+      padding:16px;
+    }
+    .panel{
+      background:rgba(0,0,0,0.18);
+      border:1px solid #1F2F4B;
+      border-radius:12px;
+      padding:12px;
+      min-height:240px;
+    }
+    .panel h2{
+      margin:0 0 10px 0;
+      font-size:13px;
+      color:#BFD4F0;
+      letter-spacing:0.3px;
+      font-weight:700;
+      text-transform:uppercase;
+    }
+    canvas{
+      width:100%;
+      height:180px;
+      border-radius:10px;
+      background:radial-gradient(900px 250px at 50% 50%, rgba(0,212,255,0.08), rgba(0,0,0,0.2));
+      border:1px solid #1C2B45;
+      display:block;
+    }
+    .row{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      margin-top:10px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .row span{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      color:var(--text);
+    }
+    .footer{
+      padding:12px 16px 16px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.55;
+    }
+
+    @media (max-width: 980px){
+      .wrap{grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- LEFT: Controls -->
+    <div class="card side">
+      <div>
+        <h1>CHSH Bell Test</h1>
+        <div class="subtitle">
+          A classic experiment showing that <strong>local hidden-variable</strong> models cannot reproduce
+          quantum entanglement correlations. You’ll compute the CHSH value <strong>S</strong>.
+        </div>
+        <div class="pillrow">
+          <div class="pill"><strong>Classical limit:</strong> S ≤ 2</div>
+          <div class="pill"><strong>Quantum max:</strong> S = 2√2 ≈ 2.828</div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <label>
+          Model
+          <span id="modelLabel">Quantum (Entangled)</span>
+        </label>
+        <select id="modelSelect">
+          <option value="quantum" selected>Quantum (Entangled)</option>
+          <option value="classical">Classical (Hidden Variable)</option>
+          <option value="random">Random (Noise)</option>
+        </select>
+
+        <div>
+          <label>
+            Trials per run
+            <span id="trialsLabel">2000</span>
+          </label>
+          <input id="trials" type="range" min="200" max="20000" step="200" value="2000"/>
+        </div>
+
+        <div>
+          <label>
+            Noise (flip outcomes)
+            <span id="noiseLabel">0%</span>
+          </label>
+          <input id="noise" type="range" min="0" max="40" step="1" value="0"/>
+        </div>
+
+        <div class="btnrow">
+          <button id="runBtn">Run Experiment</button>
+          <button id="resetBtn" style="background:rgba(244,63,94,0.12); border-color:rgba(244,63,94,0.5);">Reset</button>
+        </div>
+
+        <div class="tiny">
+          <strong>Settings used:</strong><br/>
+          Alice chooses measurement <span style="color:#BFD4F0;">a ∈ {0,1}</span>,
+          Bob chooses <span style="color:#BFD4F0;">b ∈ {0,1}</span> uniformly.<br/>
+          We estimate correlations <span style="color:#BFD4F0;">E(a,b)</span> from outcomes ±1 and compute:<br/>
+          <span style="color:#BFD4F0;">S = E(0,0) + E(0,1) + E(1,0) − E(1,1)</span>
+        </div>
+      </div>
+
+      <div class="tiny" style="opacity:0.9">
+        <strong>Portfolio note:</strong> Put this file in <em>Quantum Computing</em> right before your
+        Bloch Sphere / 2-Qubit simulator. It explains <em>why</em> entanglement matters.
+      </div>
+    </div>
+
+    <!-- RIGHT: Visuals -->
+    <div class="card main">
+      <div class="topbar">
+        <div class="sval">
+          <div class="badge" id="sBadge">S = 0.000</div>
+          <div class="badge" id="verdictBadge">Run to see result</div>
+          <div class="badge" id="winBadge">Quantum “win rate”: 0%</div>
+        </div>
+        <div class="tiny" id="statusText">Ready.</div>
+      </div>
+
+      <div class="grid">
+        <div class="panel">
+          <h2>CHSH Correlations E(a,b)</h2>
+          <canvas id="corrCanvas" width="600" height="180"></canvas>
+          <div class="row">
+            <div>E(0,0): <span id="e00">0.000</span></div>
+            <div>E(0,1): <span id="e01">0.000</span></div>
+            <div>E(1,0): <span id="e10">0.000</span></div>
+            <div>E(1,1): <span id="e11">0.000</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Outcome counts (±1 matches)</h2>
+          <canvas id="countCanvas" width="600" height="180"></canvas>
+          <div class="row">
+            <div>Same sign: <span id="sameCount">0</span></div>
+            <div>Opposite sign: <span id="oppCount">0</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <strong>Interpretation:</strong> If S reliably exceeds 2, the results can’t be explained by any
+        model where each particle carries a pre-set answer for every possible measurement (a “local hidden variable”).
+        That’s why entanglement is not just “spooky” — it’s a real computational resource.
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ---------- UI ----------
+  const modelSelect = document.getElementById('modelSelect');
+  const modelLabel  = document.getElementById('modelLabel');
+  const trialsIn    = document.getElementById('trials');
+  const trialsLabel = document.getElementById('trialsLabel');
+  const noiseIn     = document.getElementById('noise');
+  const noiseLabel  = document.getElementById('noiseLabel');
+  const runBtn      = document.getElementById('runBtn');
+  const resetBtn    = document.getElementById('resetBtn');
+
+  const sBadge       = document.getElementById('sBadge');
+  const verdictBadge = document.getElementById('verdictBadge');
+  const winBadge     = document.getElementById('winBadge');
+  const statusText   = document.getElementById('statusText');
+
+  const e00El = document.getElementById('e00');
+  const e01El = document.getElementById('e01');
+  const e10El = document.getElementById('e10');
+  const e11El = document.getElementById('e11');
+  const sameEl = document.getElementById('sameCount');
+  const oppEl  = document.getElementById('oppCount');
+
+  const corrCanvas  = document.getElementById('corrCanvas');
+  const corrCtx     = corrCanvas.getContext('2d');
+  const countCanvas = document.getElementById('countCanvas');
+  const countCtx    = countCanvas.getContext('2d');
+
+  function clamp(x, a, b){ return Math.max(a, Math.min(b, x)); }
+
+  function updateLabels(){
+    const m = modelSelect.value;
+    modelLabel.textContent =
+      m === 'quantum' ? 'Quantum (Entangled)' :
+      m === 'classical' ? 'Classical (Hidden Variable)' :
+      'Random (Noise)';
+    trialsLabel.textContent = trialsIn.value;
+    noiseLabel.textContent = noiseIn.value + "%";
+  }
+  modelSelect.addEventListener('change', updateLabels);
+  trialsIn.addEventListener('input', updateLabels);
+  noiseIn.addEventListener('input', updateLabels);
+  updateLabels();
+
+  // ---------- CHSH setup ----------
+  // We map outcomes to ±1.
+  // For the "quantum" case we approximate the singlet correlation:
+  //   E(a,b) = -cos(theta_a - phi_b)
+  // with standard angles that produce Tsirelson bound:
+  //   Alice: a0=0°, a1=90°
+  //   Bob:   b0=45°, b1=-45°
+  // Then CHSH gives S = 2*sqrt(2) (in magnitude), with a sign depending on conventions.
+  const A = [0, Math.PI/2];
+  const B = [Math.PI/4, -Math.PI/4];
+
+  // Storage for estimated correlations
+  let E = {
+    "00": 0, "01": 0, "10": 0, "11": 0
+  };
+
+  // History to estimate "win rate" in CHSH game interpretation
+  // In the CHSH game: Alice/Bob receive bits a,b; must output x,y with x XOR y = a AND b.
+  // Quantum max win rate ≈ cos^2(pi/8) ≈ 0.8536, classical max 0.75.
+  let lastWinRate = 0;
+
+  function flipWithNoise(val, noisePct){
+    if (Math.random() < noisePct/100) return -val;
+    return val;
+  }
+
+  // ---------- Models ----------
+  // Classical hidden-variable model:
+  // Each pair carries predetermined answers A0,A1,B0,B1 ∈ {±1}.
+  // We sample a random assignment per pair (still local). This cannot exceed S=2 on average.
+  function classicalPair(){
+    return {
+      A0: Math.random()<0.5 ? -1 : 1,
+      A1: Math.random()<0.5 ? -1 : 1,
+      B0: Math.random()<0.5 ? -1 : 1,
+      B1: Math.random()<0.5 ? -1 : 1
+    };
+  }
+
+  // Quantum singlet sampling:
+  // We want outcomes with correlation E = -cos(delta).
+  // One simple way: sample Alice result uniformly; set Bob result to match desired correlation probability.
+  // If E is correlation, then P(same) = (1+E)/2, P(opposite) = (1-E)/2 for ±1 variables.
+  function quantumOutcomes(a, b){
+    const delta = A[a] - B[b];
+    const corr = -Math.cos(delta); // target E(a,b)
+    const alice = (Math.random() < 0.5) ? -1 : 1;
+
+    const pSame = (1 + corr) / 2;     // P(B = A)
+    const same  = (Math.random() < pSame);
+    const bob   = same ? alice : -alice;
+
+    return { alice, bob, corr };
+  }
+
+  // Random model: independent random ±1
+  function randomOutcomes(){
+    return {
+      alice: (Math.random()<0.5) ? -1 : 1,
+      bob:   (Math.random()<0.5) ? -1 : 1
+    };
+  }
+
+  // ---------- Experiment ----------
+  function runExperiment(){
+    const model = modelSelect.value;
+    const N = parseInt(trialsIn.value);
+    const noisePct = parseInt(noiseIn.value);
+
+    statusText.textContent = "Running...";
+    // accumulators for each setting ab
+    const sum = { "00":0, "01":0, "10":0, "11":0 };
+    const cnt = { "00":0, "01":0, "10":0, "11":0 };
+
+    let sameTotal = 0, oppTotal = 0;
+
+    // CHSH game win rate tracking
+    let wins = 0;
+
+    for(let i=0; i<N; i++){
+      const a = Math.random() < 0.5 ? 0 : 1;
+      const b = Math.random() < 0.5 ? 0 : 1;
+      const key = "" + a + b;
+
+      let alice, bob;
+
+      if(model === "quantum"){
+        const out = quantumOutcomes(a,b);
+        alice = flipWithNoise(out.alice, noisePct);
+        bob   = flipWithNoise(out.bob,   noisePct);
+      } else if(model === "classical"){
+        const hv = classicalPair();
+        alice = (a===0 ? hv.A0 : hv.A1);
+        bob   = (b===0 ? hv.B0 : hv.B1);
+        alice = flipWithNoise(alice, noisePct);
+        bob   = flipWithNoise(bob,   noisePct);
+      } else {
+        const out = randomOutcomes();
+        alice = flipWithNoise(out.alice, noisePct);
+        bob   = flipWithNoise(out.bob,   noisePct);
+      }
+
+      // correlation contribution: product (±1)
+      const prod = alice * bob;
+      sum[key] += prod;
+      cnt[key]++;
+
+      if(prod === 1) sameTotal++;
+      else oppTotal++;
+
+      // CHSH game interpretation:
+      // Inputs: a,b. Outputs bits x,y where x = (alice==1?0:1) etc (any consistent mapping).
+      // We'll map ±1 -> bit: +1 => 0, -1 => 1.
+      const x = (alice === 1) ? 0 : 1;
+      const y = (bob   === 1) ? 0 : 1;
+      const target = (a & b); // a AND b
+      const ok = ((x ^ y) === target);
+      if(ok) wins++;
+    }
+
+    // Estimate E(a,b)
+    E["00"] = cnt["00"] ? (sum["00"]/cnt["00"]) : 0;
+    E["01"] = cnt["01"] ? (sum["01"]/cnt["01"]) : 0;
+    E["10"] = cnt["10"] ? (sum["10"]/cnt["10"]) : 0;
+    E["11"] = cnt["11"] ? (sum["11"]/cnt["11"]) : 0;
+
+    // CHSH S (standard form)
+    const S = E["00"] + E["01"] + E["10"] - E["11"];
+
+    lastWinRate = wins / N;
+
+    // Update UI
+    e00El.textContent = E["00"].toFixed(3);
+    e01El.textContent = E["01"].toFixed(3);
+    e10El.textContent = E["10"].toFixed(3);
+    e11El.textContent = E["11"].toFixed(3);
+
+    sameEl.textContent = sameTotal.toString();
+    oppEl.textContent  = oppTotal.toString();
+
+    sBadge.textContent = "S = " + S.toFixed(3);
+
+    // Verdict badge
+    const absS = Math.abs(S);
+    let verdict = "";
+    let cls = "badge";
+
+    if(absS < 1.8){
+      verdict = "Looks noisy / random";
+      cls += " warn";
+    } else if(absS <= 2.05){
+      verdict = "Classical-compatible (≤ 2)";
+      cls += " bad";
+    } else if(absS < 2.4){
+      verdict = "Weak Bell violation";
+      cls += " warn";
+    } else {
+      verdict = "Bell violation (Quantum)";
+      cls += " good";
+    }
+
+    verdictBadge.className = cls;
+    verdictBadge.textContent = verdict;
+
+    // Win badge
+    const wr = (lastWinRate * 100).toFixed(1);
+    winBadge.textContent = `CHSH game win rate: ${wr}%`;
+
+    // Draw charts
+    drawCorrelationBars();
+    drawCountsBar(sameTotal, oppTotal);
+
+    statusText.textContent = `Done. Trials = ${N}. Noise = ${noisePct}%.`;
+  }
+
+  // ---------- Drawing ----------
+  function clearCanvas(ctx, w, h){
+    ctx.clearRect(0,0,w,h);
+    // grid
+    ctx.strokeStyle = "rgba(27,42,68,0.7)";
+    ctx.lineWidth = 1;
+    for(let y=20; y<h; y+=20){
+      ctx.beginPath();
+      ctx.moveTo(0,y);
+      ctx.lineTo(w,y);
+      ctx.stroke();
+    }
+  }
+
+  function drawCorrelationBars(){
+    const w = corrCanvas.width, h = corrCanvas.height;
+    clearCanvas(corrCtx, w, h);
+
+    const keys = ["00","01","10","11"];
+    const labels = ["E(0,0)","E(0,1)","E(1,0)","E(1,1)"];
+    const pad = 28;
+    const barW = (w - pad*2) / keys.length;
+    const midY = h/2;
+
+    // axis
+    corrCtx.strokeStyle = "rgba(138,160,191,0.35)";
+    corrCtx.beginPath();
+    corrCtx.moveTo(pad, midY);
+    corrCtx.lineTo(w-pad, midY);
+    corrCtx.stroke();
+
+    for(let i=0; i<keys.length; i++){
+      const val = clamp(E[keys[i]], -1, 1);
+      const x = pad + i*barW;
+      const bw = barW * 0.68;
+      const bx = x + (barW - bw)/2;
+
+      const maxH = (h/2) - 22;
+      const bh = Math.abs(val) * maxH;
+      const by = val >= 0 ? (midY - bh) : midY;
+
+      // glow color
+      const col = val >= 0 ? "rgba(0,212,255,0.85)" : "rgba(244,63,94,0.85)";
+      corrCtx.fillStyle = col;
+      corrCtx.shadowColor = col;
+      corrCtx.shadowBlur = 12;
+
+      corrCtx.fillRect(bx, by, bw, bh);
+      corrCtx.shadowBlur = 0;
+
+      // label
+      corrCtx.fillStyle = "rgba(230,237,247,0.85)";
+      corrCtx.font = "12px ui-monospace, Menlo, Consolas, monospace";
+      corrCtx.textAlign = "center";
+      corrCtx.fillText(labels[i], bx + bw/2, h - 8);
+
+      // value
+      corrCtx.fillStyle = "rgba(138,160,191,0.95)";
+      corrCtx.fillText(val.toFixed(2), bx + bw/2, val >= 0 ? (by - 6) : (by + bh + 14));
+    }
+
+    // y markers
+    corrCtx.fillStyle = "rgba(138,160,191,0.6)";
+    corrCtx.font = "11px ui-monospace, Menlo, Consolas, monospace";
+    corrCtx.textAlign = "left";
+    corrCtx.fillText("+1", 6, 14);
+    corrCtx.fillText("0",  10, midY+4);
+    corrCtx.fillText("-1", 6, h-26);
+  }
+
+  function drawCountsBar(sameCount, oppCount){
+    const w = countCanvas.width, h = countCanvas.height;
+    clearCanvas(countCtx, w, h);
+
+    const total = Math.max(1, sameCount + oppCount);
+    const sameFrac = sameCount / total;
+    const oppFrac  = oppCount / total;
+
+    const pad = 30;
+    const barH = 44;
+    const y1 = 48;
+    const y2 = 116;
+
+    function drawOne(y, frac, color, label){
+      const x = pad;
+      const bw = (w - pad*2) * frac;
+
+      countCtx.fillStyle = "rgba(138,160,191,0.18)";
+      countCtx.fillRect(pad, y, w - pad*2, barH);
+
+      countCtx.fillStyle = color;
+      countCtx.shadowColor = color;
+      countCtx.shadowBlur = 12;
+      countCtx.fillRect(x, y, bw, barH);
+      countCtx.shadowBlur = 0;
+
+      countCtx.fillStyle = "rgba(230,237,247,0.9)";
+      countCtx.font = "13px ui-monospace, Menlo, Consolas, monospace";
+      countCtx.textAlign = "left";
+      countCtx.fillText(label, pad, y - 10);
+
+      countCtx.textAlign = "right";
+      countCtx.fillStyle = "rgba(138,160,191,0.95)";
+      countCtx.fillText((frac*100).toFixed(1) + "%", w - pad, y - 10);
+    }
+
+    drawOne(y1, sameFrac, "rgba(34,197,94,0.85)", "Same sign (A·B = +1)");
+    drawOne(y2, oppFrac,  "rgba(251,191,36,0.85)", "Opposite sign (A·B = -1)");
+  }
+
+  function resetAll(){
+    E["00"]=E["01"]=E["10"]=E["11"]=0;
+    e00El.textContent=e01El.textContent=e10El.textContent=e11El.textContent="0.000";
+    sameEl.textContent="0";
+    oppEl.textContent="0";
+    sBadge.textContent="S = 0.000";
+    verdictBadge.className="badge";
+    verdictBadge.textContent="Run to see result";
+    winBadge.textContent="CHSH game win rate: 0%";
+    statusText.textContent="Ready.";
+    drawCorrelationBars();
+    drawCountsBar(0,0);
+  }
+
+  runBtn.addEventListener('click', runExperiment);
+  resetBtn.addEventListener('click', resetAll);
+
+  // initial paint
+  resetAll();
+</script>
+</body>
+</html>

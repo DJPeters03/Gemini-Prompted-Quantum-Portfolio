@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantum AI Duel: Bloch Sphere</title>
+    <style>
+        body {
+            margin: 0;
+            background: #000;
+            color: #0f0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #canvas-container {
+            position: relative;
+            margin-top: 20px;
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.1);
+            border-radius: 50%;
+        }
+
+        canvas {
+            display: block;
+            background: radial-gradient(circle at center, #111 0%, #000 70%);
+        }
+
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .panel {
+            background: rgba(0, 15, 15, 0.85);
+            border: 1px solid #0ff;
+            padding: 15px;
+            margin-bottom: 10px;
+            width: 280px;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+        }
+
+        h2 { margin: 0 0 10px 0; font-size: 16px; color: #fff; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .stat-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+        .val { color: #0ff; font-weight: bold; }
+
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            text-align: center;
+            width: 100%;
+            pointer-events: none;
+            color: #666;
+            font-size: 13px;
+        }
+        
+        .key {
+            display: inline-block;
+            border: 1px solid #444;
+            background: #111;
+            color: #ddd;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin: 0 2px;
+        }
+
+        /* Scanline effect */
+        .scanlines {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 99;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="scanlines"></div>
+
+    <div id="hud">
+        <div class="panel">
+            <h2>SYSTEM STATUS</h2>
+            <div class="stat-row"><span>COHERENCE TIME:</span> <span class="val" id="time">0.0s</span></div>
+            <div class="stat-row"><span>FIDELITY (Danger):</span> <span class="val" id="fidelity">0.00%</span></div>
+            <div class="stat-row"><span>GATES APPLIED:</span> <span class="val" id="gate-count">0</span></div>
+        </div>
+        
+        <div class="panel">
+            <h2>QUBIT AI (BLUE)</h2>
+            <div class="stat-row"><span>Logic:</span> <span class="val">Gradient Descent (Evasion)</span></div>
+            <div class="stat-row"><span>State:</span> <span class="val" id="qubit-state">|0⟩</span></div>
+        </div>
+
+        <div class="panel">
+            <h2>QUDIT AI (RED)</h2>
+            <div class="stat-row"><span>Logic:</span> <span class="val">Geodesic Pursuit</span></div>
+            <div class="stat-row"><span>Mode:</span> <span class="val" id="enemy-mode">OBSERVING</span></div>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
+
+    <div id="controls">
+        <span style="color:#0ff">USER INTERVENTION REQUIRED</span><br><br>
+        <span class="key">SPACE</span> FORCE HADAMARD (Escape) &nbsp;|&nbsp; 
+        <span class="key">X</span> PAULI-X FLIP &nbsp;|&nbsp; 
+        <span class="key">R</span> REBOOT SYSTEM
+    </div>
+
+<script>
+/**
+ * QUANTUM MATH ENGINE (Simplified)
+ * We represent the state as a 3D unit vector (Bloch Vector)
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- Game State ---
+let isRunning = true;
+let startTime = Date.now();
+let gateCount = 0;
+let cameraAngle = 0;
+
+// --- Vectors ---
+class Vec3 {
+    constructor(x, y, z) { this.x = x; this.y = y; this.z = z; }
+    
+    // Rotate vector around an arbitrary axis
+    rotate(axis, angle) {
+        // Rodrigues' rotation formula
+        // v_rot = v*cos(a) + (k x v)*sin(a) + k*(k.v)*(1 - cos(a))
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+        const k = axis; // assume normalized
+        const v = this;
+        
+        const dot = k.x*v.x + k.y*v.y + k.z*v.z;
+        const crossX = k.y*v.z - k.z*v.y;
+        const crossY = k.z*v.x - k.x*v.z;
+        const crossZ = k.x*v.y - k.y*v.x;
+
+        return new Vec3(
+            v.x*c + crossX*s + k.x*dot*(1-c),
+            v.y*c + crossY*s + k.y*dot*(1-c),
+            v.z*c + crossZ*s + k.z*dot*(1-c)
+        ).normalize();
+    }
+
+    normalize() {
+        let m = Math.sqrt(this.x**2 + this.y**2 + this.z**2);
+        if (m === 0) return new Vec3(0,0,1);
+        return new Vec3(this.x/m, this.y/m, this.z/m);
+    }
+    
+    dot(v) { return this.x*v.x + this.y*v.y + this.z*v.z; }
+    
+    cross(v) {
+        return new Vec3(
+            this.y*v.z - this.z*v.y,
+            this.z*v.x - this.x*v.z,
+            this.x*v.y - this.y*v.x
+        );
+    }
+    
+    // Distance on sphere surface (angle in radians)
+    angleTo(v) {
+        let d = this.dot(v);
+        if (d > 1) d = 1; if (d < -1) d = -1;
+        return Math.acos(d);
+    }
+}
+
+// --- Agents ---
+
+const qubit = {
+    pos: new Vec3(0, -1, 0), // Starts at -Y
+    color: '#00ffff',
+    speed: 0.03,
+    
+    // AI LOGIC: Run away from enemy
+    update: function(enemyPos) {
+        // Calculate vector pointing FROM enemy TO self
+        // To run away, we want to move towards the opposite of the enemy
+        // Target = -1 * enemyPos
+        const target = new Vec3(-enemyPos.x, -enemyPos.y, -enemyPos.z);
+        
+        // Find axis of rotation to get from current pos to target
+        // Axis = Current X Target
+        let axis = this.pos.cross(target).normalize();
+        
+        // If we are perfectly opposite, cross product is zero (singularity)
+        // Add noise if that happens
+        if (Math.abs(axis.x) + Math.abs(axis.y) + Math.abs(axis.z) < 0.1) {
+            axis = new Vec3(Math.random(), Math.random(), Math.random()).normalize();
+        }
+
+        this.pos = this.pos.rotate(axis, this.speed);
+    }
+};
+
+const qudit = {
+    pos: new Vec3(0, 1, 0), // Starts at +Y
+    color: '#ff0044',
+    speed: 0.022, // Slightly slower than qubit initially
+    mode: 'PURSUIT',
+    
+    // AI LOGIC: Chase the player
+    update: function(playerPos) {
+        // We want to move TOWARD playerPos
+        // Axis = Current X Player
+        let axis = this.pos.cross(playerPos).normalize();
+        
+        // Quantum Tunneling Mechanic (Random Jumps)
+        if (Math.random() < 0.01) {
+            this.mode = 'TUNNELING';
+            // Teleport slightly
+            let jumpAxis = new Vec3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
+            this.pos = this.pos.rotate(jumpAxis, 0.5);
+        } else {
+            this.mode = 'PURSUIT';
+            this.pos = this.pos.rotate(axis, this.speed);
+        }
+    }
+};
+
+// --- Projection Helper ---
+function project(v) {
+    const r = 220; // Sphere Radius
+    // Rotate world for camera effect (around Y axis)
+    let cx = v.x * Math.cos(cameraAngle) - v.z * Math.sin(cameraAngle);
+    let cz = v.x * Math.sin(cameraAngle) + v.z * Math.cos(cameraAngle);
+    let cy = v.y;
+    
+    // Orthographic projection
+    return {
+        x: canvas.width/2 + cx * r,
+        y: canvas.height/2 + cy * r,
+        z: cz // Depth for z-sorting
+    };
+}
+
+// --- Main Loop ---
+
+function loop() {
+    if (!isRunning) return;
+
+    // 1. AI Updates
+    qubit.update(qudit.pos);
+    qudit.update(qubit.pos);
+
+    // 2. Game Mechanics
+    cameraAngle += 0.005; // Slow rotation of the sphere
+    qudit.speed += 0.00001; // Enemy gets faster over time (Entropy increases)
+
+    // Calculate Fidelity (Dot product squared roughly corresponds to probability)
+    // Here we just use raw dot product for "Closeness"
+    let dot = qubit.pos.dot(qudit.pos); 
+    // dot = 1 means same pos, dot = -1 means opposite
+    // Map -1..1 to 0..100% danger
+    let danger = ((dot + 1) / 2) * 100;
+    
+    // UI Updates
+    document.getElementById('time').innerText = ((Date.now() - startTime)/1000).toFixed(1) + "s";
+    document.getElementById('fidelity').innerText = danger.toFixed(2) + "%";
+    document.getElementById('fidelity').style.color = danger > 80 ? 'red' : '#0ff';
+    document.getElementById('enemy-mode').innerText = qudit.mode;
+    document.getElementById('enemy-mode').style.color = qudit.mode === 'TUNNELING' ? 'yellow' : 'red';
+    
+    // State string approximation
+    let alpha = Math.sqrt((1+qubit.pos.y)/2).toFixed(2); // Using Y as Z-basis for text
+    let beta = Math.sqrt((1-qubit.pos.y)/2).toFixed(2);
+    document.getElementById('qubit-state').innerText = `${alpha}|0⟩ + ${beta}|1⟩`;
+
+    // Game Over Check
+    if (dot > 0.95) { // Collision
+        alert(`SYSTEM FAILURE. \nEntropy took over after ${((Date.now() - startTime)/1000).toFixed(1)} seconds.`);
+        reset();
+    }
+
+    // 3. Render
+    draw();
+
+    requestAnimationFrame(loop);
+}
+
+function draw() {
+    // Clear
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const radius = 220;
+    const center = { x: canvas.width/2, y: canvas.height/2 };
+
+    // --- Draw Sphere (Back) ---
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, radius, 0, Math.PI*2);
+    ctx.fillStyle = '#050505';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#111';
+    ctx.stroke();
+
+    // --- Draw Grid Lines ---
+    // Latitudes
+    for(let i = -1; i <= 1; i+=0.2) {
+        drawRing(i, '#1a1a1a');
+    }
+    // Longitudes
+    for(let i = 0; i < Math.PI; i+=Math.PI/4) {
+        drawLongitude(i, '#1a1a1a');
+    }
+
+    // --- Draw Agents ---
+    // We draw the one with lower Z (back) first, then higher Z (front)
+    
+    let pQubit = project(qubit.pos);
+    let pQudit = project(qudit.pos);
+    
+    let agents = [
+        { ...pQubit, color: qubit.color, glow: true, name: "Qubit" },
+        { ...pQudit, color: qudit.color, glow: false, name: "Qudit" }
+    ];
+    
+    // Sort by Z (depth)
+    agents.sort((a, b) => a.z - b.z);
+
+    agents.forEach(a => {
+        // Draw connection line to center
+        ctx.beginPath();
+        ctx.moveTo(center.x, center.y);
+        ctx.lineTo(a.x, a.y);
+        ctx.strokeStyle = a.z > 0 ? a.color : '#222'; // Dim line if behind
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Draw Dot
+        ctx.beginPath();
+        let size = a.z > 0 ? 8 : 5; // Smaller if behind
+        let alpha = a.z > 0 ? 1 : 0.4;
+        
+        ctx.arc(a.x, a.y, size, 0, Math.PI*2);
+        ctx.fillStyle = a.color;
+        ctx.globalAlpha = alpha;
+        
+        if (a.glow && a.z > 0) {
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = a.color;
+        }
+        
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+    });
+}
+
+function drawRing(yLevel, color) {
+    // A circle at specific Y level
+    let r = Math.sqrt(1 - yLevel*yLevel) * 220;
+    // We need to project points of this circle
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    for(let t=0; t<=Math.PI*2.1; t+=0.2) {
+        let v = new Vec3(
+            Math.cos(t) * Math.sqrt(1-yLevel*yLevel),
+            yLevel,
+            Math.sin(t) * Math.sqrt(1-yLevel*yLevel)
+        );
+        let p = project(v);
+        if(t===0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+}
+
+function drawLongitude(angle, color) {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    for(let t=0; t<=Math.PI*2.1; t+=0.2) {
+        // Circle going through poles
+        let v = new Vec3(
+            Math.sin(t) * Math.cos(angle),
+            Math.cos(t),
+            Math.sin(t) * Math.sin(angle)
+        );
+        let p = project(v);
+        if(t===0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+}
+
+// --- User Inputs (The Operator) ---
+
+window.addEventListener('keydown', e => {
+    if (e.code === 'Space') {
+        // Hadamard: Rotate 90 deg around a mix axis (X+Z)
+        // This is an "Emergency Jump"
+        let axis = new Vec3(1, 0, 1).normalize();
+        qubit.pos = qubit.pos.rotate(axis, Math.PI); 
+        gateCount++;
+        document.getElementById('gate-count').innerText = gateCount;
+    }
+    if (e.code === 'KeyX') {
+        // Pauli-X: Rotate 180 around X
+        let axis = new Vec3(1, 0, 0);
+        qubit.pos = qubit.pos.rotate(axis, Math.PI);
+        gateCount++;
+        document.getElementById('gate-count').innerText = gateCount;
+    }
+    if (e.code === 'KeyR') reset();
+});
+
+function reset() {
+    qubit.pos = new Vec3(0, -1, 0);
+    qudit.pos = new Vec3(0, 1, 0);
+    qudit.speed = 0.022;
+    startTime = Date.now();
+    gateCount = 0;
+}
+
+// Start
+loop();
+
+</script>
+</body>
+</html>

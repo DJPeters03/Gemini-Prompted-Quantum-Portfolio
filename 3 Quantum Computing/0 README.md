@@ -190,8 +190,31 @@ You see:
 Key takeaway:
 
 Quantum algorithms shape probability landscapes.
+⸻
 
-￼
+10. CHSHBellTest.html
+
+This is the most important proof in the entire portfolio.
+	•	Implements the CHSH Bell inequality
+	•	Compares:
+	•	Quantum entanglement
+	•	Classical hidden-variable models
+	•	Random noise
+	•	Computes the Bell parameter S
+
+Results:
+	•	Classical: |S| ≤ 2
+	•	Quantum: |S| → 2√2 ≈ 2.828
+
+This proves entanglement cannot be reproduced classically.
+
+Without this file, quantum advantage has no justification.
+
+
+
+
+
+
 
 ⸻
 

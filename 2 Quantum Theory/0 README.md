@@ -198,7 +198,25 @@ Reality is probabilistic until you ask a question.
 ￼
 
 ⸻
+10. QubitSlit.html
 
+This visualization reinterprets the double-slit experiment using qubit language.
+	•	Each particle represents a quantum state in superposition
+	•	Two slits are labeled as |0⟩ and |1⟩
+	•	Particles propagate as wave-like trajectories until measurement
+	•	Upon passing a slit, the particle effectively projects onto a basis state
+	•	Final detection at the screen represents measurement / collapse
+
+
+This demo is a bridge file:
+	•	It connects wave–particle duality → quantum states
+	•	It reframes the classical double slit as a computational basis experiment
+	•	It prepares the viewer for:
+	•	measurement postulates
+	•	basis states
+	•	later gate-based qubit logic
+
+⸻
 How This Folder Connects Backward
 
 From Quantum Origin, we learned:

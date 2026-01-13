@@ -149,6 +149,29 @@ Exploration does not need randomness — it needs interference.
 
 ⸻
 
+7. QubitQuditChaseDemo.html
+
+This demo represents a quantum intelligence duel on the Bloch sphere.
+
+What’s happening
+	•	Blue agent: a qubit (2D Hilbert space)
+	•	Red agent: a qudit (higher-dimensional logic proxy)
+	•	Both move along geodesics on the Bloch sphere
+	•	The qubit evades; the qudit pursues
+	•	Gates (Hadamard, Pauli-X) alter escape trajectories
+	•	Measurement risk increases as states align
+
+Why this is Quantum AI (not Quantum Computing)
+	•	State = position on Bloch sphere
+	•	Actions = quantum gates
+	•	Reward = coherence survival
+	•	Failure = measurement / decoherence
+
+This is reinforcement learning intuition in a quantum state space.
+
+
+⸻
+
 How This Folder Connects Backward
 
 From Quantum Computing, we learned:
